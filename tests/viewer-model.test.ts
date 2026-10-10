@@ -71,7 +71,7 @@ describe('snapshot and preferences compatibility', () => {
     expect(() => validateSnapshot(snapshot())).toThrow('invalid');
   });
   it('sanitizes preferences and keeps title visible, including unavailable facet selections', () => {
-    expect(readPreferences({ version: 1, columns: ['unknown', 'location'], pageSize: 999, sort: '__proto__', organizations: ['Old organization', 5], isNew: 'bad' })).toMatchObject({ columns: ['jobTitle', 'location'], pageSize: 50, sort: 'deadlineText', organizations: ['Old organization'], isNew: 'all' });
+    expect(readPreferences({ version: 1, columns: ['unknown', 'location'], pageSize: 999, sort: '__proto__', organizations: ['Old organization', 5], isNew: 'bad' })).toMatchObject({ columns: ['jobTitle', 'location'], pageSize: 1000, sort: 'deadlineText', organizations: ['Old organization'], isNew: 'all' });
     expect(readPreferences({ version: 2 })).toEqual(defaults());
   });
 });
@@ -112,3 +112,13 @@ it('provides relative hover counterparts for past and distant dates without chan
   expect(relativeDeadlineTime('unknown', now)).toBeUndefined();
   expect(relativeDeadline('Oct 30, 2026 09:00 AM', now)).toBeUndefined();
 });
+
+ it.each(['organization', 'division', 'location', 'id'] as const)('searches and excludes only %s, with compatible preferences', scope => {
+   const posting = { ...rows[0], organization: 'OrgToken', division: 'DivisionToken', location: 'LocationToken', id: '987654' };
+   const prefs = readPreferences({ ...defaults(), scope, query: posting[scope] });
+   expect(prefs.scope).toBe(scope);
+   expect(selectPostings(indexPostings([posting]), prefs)).toEqual([posting]);
+   expect(selectPostings(indexPostings([posting]), { ...prefs, exclude: posting[scope] })).toEqual([]);
+   expect(selectPostings(indexPostings([posting]), { ...prefs, query: 'Backend' })).toEqual([]);
+   expect(selectPostings(indexPostings([posting]), { ...prefs, exclude: 'Backend' })).toEqual([posting]);
+ });

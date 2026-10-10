@@ -25,11 +25,31 @@ try {
   const page = await context.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${origin}/viewer.html`);
+  assert.equal(await page.title(), 'Scoped: postings');
+  // Extension resources can be fetched directly by the document, independently of HTTP tooling.
+  const icon = await page.evaluate(async () => { const response = await fetch(document.querySelector('link[rel="icon"]').href); return { ok: response.ok, bytes: (await response.arrayBuffer()).byteLength }; });
+  assert(icon.ok && icon.bytes > 0, 'Browser-tab icon must resolve inside the extension');
   await page.locator('#count').filter({ hasText: '4 matching' }).waitFor();
+  await page.locator('.search-options summary').click();
+  await page.locator('#scope').selectOption('location');
+  await page.locator('#query').fill('Montreal');
+  await page.locator('#count').filter({ hasText: '1 matching' }).waitFor();
+  await page.locator('.search-options summary').click();
+  await page.locator('.company-search').click();
+  await page.locator('#count').filter({ hasText: '4 matching' }).waitFor();
+  await page.locator('#search-back').click();
+  await page.locator('#count').filter({ hasText: '1 matching' }).waitFor();
+  assert.equal(await page.locator('#query').inputValue(), 'Montreal');
+  assert.equal(await page.locator('#scope').inputValue(), 'location');
+  assert.equal(await page.getByText('Updated collection loaded. Your filters are preserved.').count(), 0);
+  await page.screenshot({ path: join(root, '.cache/field-company-search-desktop.png') });
+  await page.locator('#reset').click();
   await page.locator('#query').fill('server development');
   await page.locator('#searchMode').selectOption('semantic');
+  const waitForSemantic = () => page.waitForFunction(() => document.getElementById('query').getAttribute('aria-busy') === 'false' && Boolean(document.querySelector('.relevance-row')), undefined, { timeout: 120000 });
   const started = Date.now();
-  await page.locator('#search-status').filter({ hasText: 'Related matches ranked locally' }).waitFor({ timeout: 120000 });
+  await waitForSemantic();
+  assert.equal(await page.locator('#search-feedback').isVisible(), false, 'Normal completed semantic search should have no helper message');
   const coldMs = Date.now() - started;
   assert.equal(await page.locator('#semantic-retry').isVisible(), false);
   const ids = await page.locator('#rows [data-save]').evaluateAll(elements => elements.map(element => element.dataset.save));
@@ -52,21 +72,43 @@ try {
   console.log(JSON.stringify({ ids, similarities }));
   assert(ids.includes('1001'), 'Related backend title was not recalled');
   assert(['1001', '1003'].includes(ids[0]), 'Relevant software role should rank first');
+  assert(ids.includes('1004'), 'Lower similarity research row should now be visible');
+  assert.equal(await page.locator('.relevance-score').count(), ids.length);
+  const shownScores = await page.locator('.relevance-score').allTextContents();
+  assert(shownScores.every(label => /^Relevance -?\d+\.\d{3}$/.test(label)), 'Rows must display their ranking scores');
+  const verifyBars = async () => {
+    const bars = await page.locator('.relevance-row').evaluateAll(rows => rows.map(row => {
+      const bar = getComputedStyle(row, '::after'), score = Number(row.querySelector('.relevance-score').textContent.split(' ')[1]);
+      const label = row.querySelector('.relevance-score').getBoundingClientRect();
+      return { width: parseFloat(bar.width), rowWidth: row.getBoundingClientRect().width, score, height: parseFloat(bar.height), labelWidth: label.width };
+    }));
+    assert(bars.length > 0);
+    for (const bar of bars) {
+      assert(Math.abs(bar.width / bar.rowWidth - bar.score) < 0.002, 'Green bar must span score × full row width');
+      assert.equal(bar.height, 2); assert(bar.labelWidth <= 1, 'Numeric score must be visually hidden');
+    }
+  };
+  await verifyBars();
+  await page.screenshot({ path: join(root, '.cache/semantic-relevance-bars-desktop.png') });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await verifyBars();
+  await page.screenshot({ path: join(root, '.cache/semantic-relevance-bars-dark.png') });
+  await page.emulateMedia({ colorScheme: 'light' });
   // Exact filters remain active even when the query contains no location words.
   await page.locator('input[value="Vancouver, BC"]').check();
   assert.equal(await page.locator('#rows [data-save="1003"]').count(), 0);
   // Warm-cache reload remains completely offline.
   await page.reload();
-  await page.locator('#search-status').filter({ hasText: 'Related matches ranked locally' }).waitFor({ timeout: 120000 });
+  await waitForSemantic();
   const warmStart = Date.now();
   await page.locator('#query').fill('backend engineer');
-  await page.locator('#search-status').filter({ hasText: 'Related matches ranked locally' }).waitFor();
-  await page.waitForTimeout(400);
-  await page.waitForFunction(() => document.getElementById('query').getAttribute('aria-busy') === 'false');
+  await waitForSemantic();
   const warmMs = Date.now() - warmStart;
   console.log(JSON.stringify({ backendQuery: await debugScores('backend engineer') }));
-  assert.equal(await page.locator('#rows [data-save="1002"]').count(), 0, 'Weak designer overlap should be excluded for an exact backend query');
+  assert.equal(await page.locator('#rows [data-save="1002"]').count(), 1, 'Weaker designer overlap should remain visible with its lower score');
+  assert.equal((await page.locator('#rows [data-save]').first().getAttribute('data-save')), '1001', 'Backend role still ranks above weaker matches');
   await page.setViewportSize({ width: 390, height: 844 });
+  await verifyBars();
   await page.screenshot({ path: join(root, '.cache/semantic-search-mobile.png') });
   const layout = await page.evaluate(() => ({ width: innerWidth, documentWidth: document.documentElement.scrollWidth }));
   assert.equal(layout.documentWidth, layout.width);

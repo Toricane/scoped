@@ -3,7 +3,8 @@ import type { Posting } from './types';
 
 export const embeddingVersion = 'minilm-l6-v2:751bff3:q8:mean:384:text-v1';
 export const dimensions = 384;
-export type SearchScope = 'all' | 'title';
+export type { SearchScope } from './viewer-model';
+import type { SearchScope } from './viewer-model';
 export interface SemanticDocument { id: string; text: string }
 export interface SemanticRequest { revision: number; documents: SemanticDocument[]; query: string }
 export type SemanticReply = { revision: number; type: 'progress'; message: string }
@@ -13,7 +14,8 @@ export type SemanticReply = { revision: number; type: 'progress'; message: strin
 /** Stable text only: deadlines and local library marks must not invalidate embeddings. */
 export function semanticText(posting: Posting, scope: SearchScope): string {
   const title = `Position: ${positionTitle(posting)}`;
-  return scope === 'title' ? title : [title, `Organization: ${posting.organization}`, `Division: ${posting.division}`, `Location: ${posting.location}`].join('\n');
+  if (scope !== 'all') return scope === 'title' ? title : `${scope === 'id' ? 'ID' : scope[0].toUpperCase() + scope.slice(1)}: ${posting[scope]}`;
+  return [title, `Organization: ${posting.organization}`, `Division: ${posting.division}`, `Location: ${posting.location}`].join('\n');
 }
 export function validVector(value: unknown): value is Float32Array {
   return value instanceof Float32Array && value.length === dimensions && value.every(Number.isFinite) && value.some(component => component !== 0);
@@ -24,7 +26,7 @@ export function cosine(a: Float32Array, b: Float32Array): number {
   return aa && bb ? Math.max(-1, Math.min(1, dot / Math.sqrt(aa * bb))) : 0;
 }
 /** Cosine recalls related text; lexical coverage keeps exact names useful. Scores are not probabilities. */
-export function relevance(query: string, document: SemanticDocument, queryVector: Float32Array, vector: Float32Array, minimumSimilarity = 0.20): number | undefined {
+export function relevance(query: string, document: SemanticDocument, queryVector: Float32Array, vector: Float32Array, minimumSimilarity = 0.10): number | undefined {
   const terms = tokens(query), text = fold(document.text);
   const lexical = terms.length ? terms.filter(term => text.includes(term)).length / terms.length : 0;
   if (/^\d+$/.test(query.trim())) return document.id === query.trim() ? 1 : undefined;

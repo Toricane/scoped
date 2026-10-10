@@ -31,7 +31,7 @@ function render(): void {
   element('status').hidden = (!run && tabId === undefined) || run?.status === 'complete';
   element('progress').hidden = !active;
   element('counts').hidden = !run;
-  element('counts').textContent = run ? `Page ${run.currentPage || '—'} · ${run.collected.toLocaleString()} / ${run.total.toLocaleString()} postings` : 'No collection running.';
+  element('counts').textContent = run ? `Page ${run.currentPage || '-'} · ${run.collected.toLocaleString()} / ${run.total.toLocaleString()} postings` : 'No collection running.';
   const progress = element<HTMLProgressElement>('progress');
   progress.max = Math.max(1, run?.total ?? 1);
   progress.value = run?.status === 'complete' && run.total === 0 ? 1 : run?.collected ?? 0;

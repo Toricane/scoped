@@ -23,20 +23,20 @@ let semantic: SemanticSearch | undefined, semanticKey = '', semanticRevision = 0
 let semanticState: 'idle' | 'loading' | 'ready' | 'error' = 'idle', semanticMessage = '';
 let libraryRevision = 0;
 function semanticFeedback(): void {
-  const enabled = preferences.searchMode === 'semantic';
-  element('search-feedback').hidden = !enabled;
-  element('search-status').textContent = semanticMessage || 'Related matches ranked locally. Use filters for exact locations and deadlines.';
+  const enabled = preferences.searchMode === 'semantic' && preferences.scope !== 'id';
+  element('search-feedback').hidden = !enabled || !semanticMessage;
+  element('search-status').textContent = semanticMessage;
   element('semantic-retry').hidden = semanticState !== 'error';
   element('query').setAttribute('aria-busy', String(semanticState === 'loading'));
   element('search-help').textContent = enabled
-    ? 'Find related roles using saved titles, organizations, divisions and locations. Dates and locations in a sentence are not automatic filters: use Refine results. Exclusions remain literal. No data leaves your browser.'
+    ? 'Find related matches within the selected search field. Dates and locations in a sentence are not automatic filters: use Refine results. Exclusions remain literal. No data leaves your browser.'
     : 'Every word must match. Use quotes for an exact phrase. Exclusions remove any match. Searches use saved table text.';
   const option = element<HTMLSelectElement>('sort').querySelector<HTMLOptionElement>('[value="relevance"]');
   if (option) { option.hidden = !enabled; option.disabled = !enabled; }
 }
 function prepareSemantic(): void {
   const query = preferences.query.trim();
-  if (preferences.searchMode !== 'semantic' || !query || !index.length) {
+  if (preferences.searchMode !== 'semantic' || preferences.scope === 'id' || !query || !index.length) {
     if (semanticKey || semanticState !== 'idle') { semanticRevision++; semantic?.cancel(); semanticKey = ''; }
     semanticScores = undefined; semanticState = 'idle'; semanticMessage = ''; semanticFeedback(); return;
   }
@@ -54,8 +54,8 @@ function prepareSemantic(): void {
     });
     if (revision !== semanticRevision) return;
     semanticScores = result.scores; semanticState = 'ready';
-    semanticMessage = `Related matches ranked locally${result.cacheAvailable ? '' : ' · Persistent cache unavailable; this tab uses memory'}. Use filters for exact locations and deadlines.`;
-    page = 1; render();
+    semanticMessage = result.cacheAvailable ? '' : 'Persistent cache unavailable; this tab uses memory.';
+    render();
   }).catch(() => {
     if (revision !== semanticRevision) return;
     semanticState = 'error'; semanticScores = undefined;
@@ -142,7 +142,7 @@ element<HTMLAnchorElement>('all-tab').href = api.runtime.getURL('viewer.html');
 element<HTMLAnchorElement>('applied-tab').href = api.runtime.getURL('viewer.html?view=applied');
 element(appliedMode ? 'applied-tab' : savedMode ? 'saved-tab' : 'all-tab').setAttribute('aria-current', 'page');
 if (libraryMode) {
-  document.title = appliedMode ? 'Scoped — Applied postings' : 'Scoped — Saved postings';
+  document.title = appliedMode ? 'Scoped: Applied postings' : 'Scoped: Saved postings';
   document.querySelector('.export-menu summary')!.textContent = 'Export SCOPE collection ↓';
   document.querySelector('.export-menu .help')!.textContent = 'Exports contain the full latest SCOPE collection, not local Saved or Applied records.';
 }
@@ -154,6 +154,28 @@ function save(): void {
   writeQueue = writeQueue.catch(() => {}).then(() => api.storage.local.set({ [preferenceStorageKey]: value })).catch(error);
 }
 function changed(): void { page = 1; save(); render(); }
+type PreviousSearch = { preferences: Preferences; page: number; mapView: boolean; scroll: number; company: string; facetSearches: string[] };
+const previousSearches: PreviousSearch[] = [];
+function companySearch(company: string): void {
+  if (timer) clearTimeout(timer);
+  previousSearches.push({ preferences: structuredClone(preferences), page, mapView, scroll: document.querySelector('.table-scroll')!.scrollTop, company, facetSearches: [...document.querySelectorAll<HTMLInputElement>('.facet-search')].map(input => input.value) });
+  const { sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode } = preferences;
+  preferences = { ...defaults(), sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, organizations: [company] };
+  preferencesLoaded = true; mapView = false;
+  fillControls(); makeFacets(true); changed();
+  document.querySelector('.table-scroll')!.scrollTop = 0;
+  element('search-back').focus();
+}
+element('search-back').addEventListener('click', () => {
+  const previous = previousSearches.pop(); if (!previous) return;
+  if (timer) clearTimeout(timer);
+  preferences = previous.preferences; page = previous.page; mapView = previous.mapView; preferencesLoaded = true;
+  fillControls(); makeFacets(true);
+  document.querySelectorAll<HTMLInputElement>('.facet-search').forEach((input, i) => { input.value = previous.facetSearches[i] ?? ''; input.dispatchEvent(new Event('input')); });
+  save(); render(); document.querySelector('.table-scroll')!.scrollTop = previous.scroll;
+  const company = [...document.querySelectorAll<HTMLButtonElement>('.company-search')].find(button => button.dataset.company === previous.company);
+  (company ?? element('query')).focus({ preventScroll: true });
+});
 function fillControls(): void {
   for (const id of ['query', 'exclude', 'scope', 'searchMode', 'isNew', 'shortlisted', 'from', 'to', 'min', 'max', 'sort', 'direction', 'pageSize'] as const) element<HTMLInputElement | HTMLSelectElement>(id).value = String(preferences[id]);
   for (const id of ['unknownDeadline', 'hideExpired', 'expiredLast', 'relativeDeadlines'] as const) element<HTMLInputElement>(id).checked = preferences[id];
@@ -243,7 +265,7 @@ function details(row: Posting): HTMLTableRowElement {
   const tr = node('tr'); tr.className = 'expanded'; tr.id = `details-${row.id}`;
   const td = node('td'); td.colSpan = preferences.columns.length;
   const list = node('dl');
-  for (const [key, label] of Object.entries(columnLabels)) { const field = node('div'); const value = node('dd', display(row, key as Column) || '—'); if (key === 'deadlineText') deadlineHover(value, row.deadlineText); field.append(node('dt', label), value); list.append(field); }
+  for (const [key, label] of Object.entries(columnLabels)) { const field = node('div'); const value = node('dd', display(row, key as Column) || '-'); if (key === 'deadlineText') deadlineHover(value, row.deadlineText); field.append(node('dt', label), value); list.append(field); }
   const copy = node('button', 'Copy posting ID'); copy.addEventListener('click', () => { void navigator.clipboard.writeText(row.id).then(() => { copy.textContent = 'ID copied'; }, error); });
   td.append(list, copy); tr.append(td); return tr;
 }
@@ -254,9 +276,11 @@ function render(): void {
   const focusedIndex = active?.closest('tr') ? [...element('rows').children].filter(row => !row.classList.contains('expanded')).indexOf(active.closest('tr')!) : 0;
   const focusedSort = active?.dataset.sort;
   const focusedMenu = active?.dataset.rowActions;
+  element('search-back').hidden = !previousSearches.length;
   prepareSemantic();
   matches = selectPostings(index, preferences, new Date(), semanticScores);
-  const searchOptions = Number(preferences.scope === 'title') + Number(Boolean(preferences.exclude));
+  element('reset').hidden = !(preferences.query || preferences.exclude || preferences.scope !== 'all' || preferences.organizations.length || preferences.locations.length || preferences.statuses.length || preferences.terms.length || preferences.isNew !== 'all' || preferences.shortlisted !== 'all' || preferences.from || preferences.to || preferences.min || preferences.max || preferences.hideExpired || preferences.unknownDeadline);
+  const searchOptions = Number(preferences.scope !== 'all') + Number(Boolean(preferences.exclude));
   document.querySelector('.search-options summary')!.textContent = searchOptions ? `Search options · ${searchOptions}` : 'Search options';
   const pages = Math.max(1, Math.ceil(matches.length / preferences.pageSize)); page = Math.min(page, pages);
   element('count').textContent = `${matches.length.toLocaleString()} matching / ${libraryPostings.length.toLocaleString()} postings`;
@@ -305,21 +329,33 @@ function render(): void {
     for (const key of preferences.columns) {
       const td = node('td'); td.dataset.column = key;
       td.dataset.label = columnLabels[key];
-      if (key === 'isNew' || key === 'shortlisted') { if (row[key]) { const badge = node('span', key === 'isNew' ? 'New' : 'Shortlisted'); badge.className = 'badge'; td.append(badge); } else td.textContent = '—'; }
+      if (key === 'isNew' || key === 'shortlisted') { if (row[key]) { const badge = node('span', key === 'isNew' ? 'New' : 'Shortlisted'); badge.className = 'badge'; td.append(badge); } else td.textContent = '-'; }
       else if (key === 'jobTitle') {
-        const link = node('a', positionTitle(row)); link.href = api.runtime.getURL(`posting.html?id=${encodeURIComponent(row.id)}`); link.target = '_blank'; link.rel = 'noopener'; link.setAttribute('aria-label', `Open ${positionTitle(row)} in a new tab`); link.append(icon('external')); td.append(link);
+        const link = node('a', positionTitle(row)); link.href = api.runtime.getURL(`posting.html?id=${encodeURIComponent(row.id)}`); link.target = '_blank'; link.rel = 'noopener'; link.setAttribute('aria-label', `Open ${positionTitle(row)} in a new tab`); link.prepend(icon('external')); td.append(link);
         const flags = node('span'); flags.className = 'posting-flags';
         for (const [flag, label] of [['isNew', 'New'], ['shortlisted', 'SCOPE shortlist']] as const) {
           if (row[flag] && !preferences.columns.includes(flag)) { const badge = node('span', label); badge.className = 'badge'; flags.append(badge); }
         }
         if (flags.childElementCount) td.append(flags);
+        const score = semanticScores?.get(row.id);
+        if (score !== undefined) {
+          tr.classList.add('relevance-row');
+          tr.style.setProperty('--relevance-width', `${Math.max(0, Math.min(1, score)) * 100}%`);
+          tr.title = `Relevance ${score.toFixed(3)} to “${preferences.query.trim()}”. Higher scores mean a closer match; this is not a confidence percentage.`;
+          const label = node('span', `Relevance ${score.toFixed(3)}`); label.className = 'sr-only relevance-score';
+          label.setAttribute('aria-label', `Relevance to your query: ${score.toFixed(3)}`); td.append(label);
+        }
         if (isExpired(row.deadlineText)) { const badge = node('span', 'Expired'); badge.className = 'retained-label'; td.append(badge); }
         if (row.shortlisted && savedMode && preferences.columns.includes('shortlisted')) { const badge = node('span', 'SCOPE shortlist'); badge.className = 'retained-label'; td.append(badge); }
         if (libraryMode && !snapshot?.postings.some(current => current.id === row.id)) { const label = node('span', 'Not in latest search'); label.className = 'retained-label'; label.title = 'Retained when saved. This does not establish whether the posting is still available.'; td.append(label); }
+      } else if (key === 'organization' && row.organization) {
+        const company = node('button', row.organization); company.className = 'company-search'; company.dataset.company = row.organization;
+        company.title = `See all positions from ${row.organization}`; company.setAttribute('aria-label', `See all positions from ${row.organization}`);
+        company.addEventListener('click', () => companySearch(row.organization)); td.append(company);
       } else if (key === 'deadlineText') {
-        const relative = preferences.relativeDeadlines ? relativeDeadline(row.deadlineText) : undefined; td.textContent = relative ?? (row.deadlineText || '—');
+        const relative = preferences.relativeDeadlines ? relativeDeadline(row.deadlineText) : undefined; td.textContent = relative ?? (row.deadlineText || '-');
         deadlineHover(td, row.deadlineText, Boolean(relative));
-      } else td.textContent = display(row, key) || '—';
+      } else td.textContent = display(row, key) || '-';
       tr.append(td);
     }
     const saveButton = node('button', isSaved(row) ? savedMode ? 'Remove' : 'Saved' : 'Save'); saveButton.className = isSaved(row) ? 'save-posting is-saved' : 'save-posting secondary'; saveButton.dataset.save = row.id; saveButton.disabled = saving.has(row.id); saveButton.title = isSaved(row) ? 'Remove from Saved' : 'Save locally'; saveButton.setAttribute('aria-pressed', String(isSaved(row))); saveButton.setAttribute('aria-label', `${isSaved(row) ? 'Remove from Saved:' : 'Save'} ${positionTitle(row)} locally`);
@@ -420,7 +456,13 @@ for (const id of ['query', 'exclude', 'scope', 'searchMode', 'isNew', 'shortlist
     error();
     if (timer) clearTimeout(timer);
     if (id === 'query' || id === 'exclude') {
-      if (id === 'query') { semanticRevision++; semanticKey = ''; semanticScores = undefined; }
+      if (id === 'query') {
+        semanticRevision++; semanticKey = ''; semanticScores = undefined;
+        document.querySelectorAll('.relevance-score').forEach(label => label.remove());
+        document.querySelectorAll<HTMLElement>('.relevance-row').forEach(row => {
+          row.classList.remove('relevance-row'); row.style.removeProperty('--relevance-width'); row.removeAttribute('title');
+        });
+      }
       timer = setTimeout(changed, preferences.searchMode === 'semantic' ? 300 : 60);
     } else changed();
   });
@@ -456,7 +498,6 @@ async function load(initial = false): Promise<void> {
     saved = readSaved(records); removedSaved = readRemovedSaved(records); applied = readApplied(records); rebuildLibrary();
     index = indexPostings(libraryPostings); page = 1; expanded.clear();
     element('snapshot-info').textContent = savedMode ? `${saved.size} Saved postings · Local to Scoped, independent of SCOPE` : snapshot ? `${snapshot.postings.length.toLocaleString()} postings · Collected ${new Date(snapshot.collectedAt).toLocaleString()}` : 'Your saved SCOPE search, ready to explore.';
-    element('update').hidden = initial || !snapshot;
     error(collectionError); makeFacets(); render();
   } catch (value) { if (revision === loadRevision) { snapshot = undefined; libraryPostings = []; index = []; libraryRevision++; render(); error(value); } }
 }

@@ -4,13 +4,15 @@ import { isSourceUrl, type Posting, type Snapshot } from './types';
 export const columnLabels = { jobTitle: 'Job title', organization: 'Organization', location: 'Location', deadlineText: 'Deadline', applications: 'Applications', isNew: 'New on SCOPE', shortlisted: 'SCOPE shortlist', id: 'ID', term: 'Term', division: 'Division', applicationStatus: 'Application status' };
 export type Column = keyof typeof columnLabels;
 export const defaultColumns: Column[] = ['jobTitle', 'organization', 'location', 'deadlineText', 'applications'];
+export const searchScopes = ['all', 'title', 'organization', 'division', 'location', 'id'] as const;
+export type SearchScope = typeof searchScopes[number];
 type Flag = 'all' | 'yes' | 'no';
 export interface Preferences {
-  version: 1; query: string; exclude: string; scope: 'all' | 'title'; searchMode: 'keyword' | 'semantic';
+  version: 1; query: string; exclude: string; scope: SearchScope; searchMode: 'keyword' | 'semantic';
   groupGreaterVancouver: boolean; organizations: string[]; locations: string[]; statuses: string[]; terms: string[];
   facetOrder: Record<'organizations' | 'locations' | 'statuses' | 'terms', FacetOrder>;
   isNew: Flag; shortlisted: Flag; from: string; to: string; unknownDeadline: boolean; hideExpired: boolean; expiredLast: boolean; relativeDeadlines: boolean;
-  min: string; max: string; sort: Column | 'relevance'; direction: 'asc' | 'desc'; pageSize: 25 | 50 | 100; columns: Column[];
+  min: string; max: string; sort: Column | 'relevance'; direction: 'asc' | 'desc'; pageSize: 25 | 50 | 100 | 1000; columns: Column[];
 }
 export const preferencesKey = 'viewerPreferences:v1';
 export type FacetOrder = 'az' | 'za' | 'count' | 'selected';
@@ -19,7 +21,7 @@ export function positionTitle(posting: Posting): string {
   return posting.jobTitle.replace(new RegExp(`\\s+${posting.id}[A-Za-z]*(?=\\s+E\\d+\\s*$|\\s*$)`), '').trim() || posting.jobTitle;
 }
 export function defaults(): Preferences {
-  return { version: 1, query: '', exclude: '', scope: 'all', searchMode: 'keyword', groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 50, columns: [...defaultColumns] };
+  return { version: 1, query: '', exclude: '', scope: 'all', searchMode: 'keyword', groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 1000, columns: [...defaultColumns] };
 }
 export function readPreferences(value: unknown): Preferences {
   const result = defaults();
@@ -34,12 +36,12 @@ export function readPreferences(value: unknown): Preferences {
   for (const key of ['query', 'exclude', 'from', 'to', 'min', 'max'] as const) if (typeof stored[key] === 'string') result[key] = (stored[key] as string).slice(0, 2000);
   for (const key of ['organizations', 'locations', 'statuses', 'terms'] as const) if (Array.isArray(stored[key])) result[key] = [...new Set((stored[key] as unknown[]).filter((entry): entry is string => typeof entry === 'string'))];
   for (const key of ['isNew', 'shortlisted'] as const) if (['all', 'yes', 'no'].includes(String(stored[key]))) result[key] = stored[key] as Flag;
-  if (stored.scope === 'title') result.scope = 'title';
+  if (searchScopes.includes(stored.scope as SearchScope)) result.scope = stored.scope as SearchScope;
   if (stored.searchMode === 'semantic') result.searchMode = 'semantic';
   if (stored.direction === 'desc') result.direction = 'desc';
   if (typeof stored.sort === 'string' && Object.hasOwn(columnLabels, stored.sort)) result.sort = stored.sort as Column;
   if (stored.sort === 'relevance' && result.searchMode === 'semantic') result.sort = 'relevance';
-  if ([25, 50, 100].includes(Number(stored.pageSize))) result.pageSize = stored.pageSize as Preferences['pageSize'];
+  if ([25, 50, 100, 1000].includes(Number(stored.pageSize))) result.pageSize = stored.pageSize as Preferences['pageSize'];
   for (const key of ['hideExpired', 'expiredLast', 'groupGreaterVancouver', 'relativeDeadlines'] as const) if (typeof stored[key] === 'boolean') result[key] = stored[key];
   if (stored.unknownDeadline === true) result.unknownDeadline = true;
   if (Array.isArray(stored.columns)) {
@@ -128,7 +130,7 @@ export function selectPostings(index: IndexedPosting[], preferences: Preferences
   const required = tokens(preferences.query), excluded = tokens(preferences.exclude);
   const flag = (choice: Flag, value: boolean) => choice === 'all' || (choice === 'yes') === value;
   const matches = index.filter(item => {
-    const row = item.posting, text = item[preferences.scope === 'title' ? 'title' : 'all'];
+    const row = item.posting, text = preferences.scope === 'all' || preferences.scope === 'title' ? item[preferences.scope] : fold(row[preferences.scope]);
     if (scores ? !scores.has(row.id) : !required.every(term => text.includes(term))) return false;
     if (excluded.some(term => text.includes(term))) return false;
     for (const [filter, key] of [['organizations', 'organization'], ['statuses', 'applicationStatus'], ['terms', 'term']] as const) if (preferences[filter].length && !preferences[filter].includes(row[key])) return false;

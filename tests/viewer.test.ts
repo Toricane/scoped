@@ -181,7 +181,8 @@ describe('local viewer', () => {
   });
   it('paginates the complete locally filtered set', async () => {
     snapshot.postings = Array.from({ length: 65 }, (_, index) => ({ ...snapshot.postings[0], id: String(5000 + index), jobTitle: `Job ${index}` })); snapshot.reportedTotal = 65;
-    await open(); expect(rows()).toHaveLength(50); control('next').click(); expect(rows()).toHaveLength(15);
+    await open(); expect(rows()).toHaveLength(65); expect(control('pageSize').value).toBe('1000');
+    change('pageSize', '50'); expect(rows()).toHaveLength(50); control('next').click(); expect(rows()).toHaveLength(15);
     change('query', 'Job 64'); await vi.waitFor(() => expect(rows()).toHaveLength(1)); expect(document.getElementById('page-label')!.textContent).toBe('Page 1 of 1');
   });
   it('updates only on a successful snapshot change, preserving the current query', async () => {
@@ -289,4 +290,29 @@ it('toggles relative deadline display without changing Details or source data an
     await vi.waitFor(() => expect(stored[preferencesKey]).toMatchObject({ relativeDeadlines: true }));
     expect(snapshot.postings[0].deadlineText).toBe('Oct 13, 2026 09:00 AM');
   } finally { vi.useRealTimers(); }
+});
+
+it('company search clears constraints and restores the previous search, page, and list-search text', async () => {
+  snapshot.postings = Array.from({ length: 60 }, (_, i) => ({ ...snapshot.postings[0], id: String(2000 + i), jobTitle: i < 30 ? 'Backend Engineer' : 'Designer', organization: 'Example Company' }));
+  snapshot.reportedTotal = 60;
+  const prefs = { ...defaults(), query: 'Backend', scope: 'title', pageSize: 25, locations: [snapshot.postings[0].location] };
+  stored[preferencesKey] = prefs;
+  await open();
+  control('next').click();
+  const search = document.querySelector<HTMLInputElement>('[data-facet="organizations"] .facet-search')!;
+  search.value = 'Example'; search.dispatchEvent(new Event('input'));
+  document.querySelector('.table-scroll')!.scrollTop = 150;
+  document.querySelector<HTMLButtonElement>('.company-search')!.click();
+  expect(control('query').value).toBe('');
+  expect(document.getElementById('count')!.textContent).toContain('60 matching');
+  expect(control('search-back').hidden).toBe(false);
+  expect(document.activeElement).toBe(control('search-back'));
+  control('search-back').click();
+  expect(control('query').value).toBe('Backend'); expect(control('scope').value).toBe('title');
+  expect(document.getElementById('count')!.textContent).toContain('30 matching');
+  expect(document.getElementById('page-label')!.textContent).toBe('Page 2 of 2');
+  expect(document.querySelector<HTMLInputElement>('[data-facet="organizations"] .facet-search')!.value).toBe('Example');
+  expect(document.querySelector('.table-scroll')!.scrollTop).toBe(150);
+  expect(control('search-back').hidden).toBe(true);
+  expect(document.activeElement?.classList.contains('company-search')).toBe(true);
 });

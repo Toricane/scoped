@@ -52,6 +52,8 @@ Storage is authoritative. Start/cancel/progress/completion and tab lifecycle tra
 
 ### Viewer and exports
 
+New viewer preferences default to 1000 rows per page. The page-size selector and version-1 preference reader accept 25, 50, 100 and 1000. Existing saved choices remain valid and separate for All/Saved/Applied; filtering still precedes pagination.
+
 The viewer validates the latest snapshot and builds in-memory search/sort indexes. All filtering runs across the snapshot before local pagination. Default sorting is deadline ascending with numeric ID descending as the tie-breaker; blanks/unknowns stay last. Preferences use a separate versioned key. A successful snapshot event rebuilds indexes, preserves filters, and resets local pagination; stale reads cannot overwrite newer data.
 
 Downloads are background-owned and always serialize the entire successful snapshot. Closing the popup or invoking Save As must not invalidate file data.
@@ -68,11 +70,15 @@ Wait for tabs.update acknowledgement and inspect current tab state rather than t
 
 Both packages use Manifest V3 and exactly four API permissions plus the SCOPE host. Firefox 142+ uses background.scripts; Chrome 120+ uses a background service_worker. The toolbar uses popup.html; viewer.html and posting.html are local pages. Assets are bundled; no remote libraries are loaded.
 
+Popup, viewer and posting pages declare the packaged 32px PNG favicon for browser tabs. Scoped-authored titles use a colon instead of an em dash, and blank-field placeholders use a plain hyphen. Captured posting text and raw exports are preserved. Package validation checks tab-icon declarations/assets and title punctuation.
+
 Edit sources, not dist. Keep package.json, the root package-lock versions, and the generated manifest version in scripts/build.mjs aligned when releasing. After rebuilding, reload the extension and reopen its pages. Do not make a behavior/version change merely to edit documentation.
 
 Keep the source CSV ignored and unchanged. Do not commit account markup, session/form/action values, downloaded site libraries, or real data fixtures. The original browser save and companion assets were intentionally removed.
 
 ## Technical references
+
+Semantic result rows paint a 2px muted green bottom bar with a width of clamp(score,0,1) × full row/card width using a positioned pseudo-element and --relevance-width. Preserve row height and sticky title cells. Exact scores remain in row hover tooltips and sr-only title text, independent of column sorting. Query edits remove stale bars, widths, tooltips and accessible labels immediately during debounce; keyword/error fallback has no bar. Inclusion uses a fixed 0.10 cosine floor with full-literal-match exceptions. See [semantic search](semantic-search.md).
 
 Optional semantic search lives in src/semantic-model.ts (text/cosine/contracts), src/semantic-engine.ts (incremental inference/ranking), src/semantic-cache.ts (disposable IndexedDB), src/semantic-worker.ts (local-only model/runtime configuration), and src/semantic-client.ts (worker lifecycle/revisions). Viewer loading is lazy and preserves keyword fallback, exact filters and stale-response protection. scripts/semantic-assets.mjs prepares pinned model/runtime assets before build; npm run setup:search can prepare them separately. Worker imports resolve to the packaged self-contained Transformers runtime; no duplicate WASM bundle is emitted. See [semantic-search contract](semantic-search.md).
 
@@ -84,7 +90,7 @@ Primary organization/location facets precede flag filters and the Deadline displ
 
 The viewer combines brand/collection metadata, collection tabs, List/Globe controls and exports in one compact header. Controls wrap in DOM order at narrow widths; truncated metadata retains its full text in a title tooltip. Keep one export menu with unique download IDs. Collection navigation uses ordinary same-tab links, retaining native modifier-click/new-tab behavior; posting-title links still open separately.
 
-The popup puts the collection first and distinguishes it from the Saved library; export/setup disclosures keep its ordinary state compact. The viewer's primary search stays visible, while Search options holds scope/exclusions and indicates active settings. Filter-option sorting is stored per group in facetOrder within existing version-1 preferences, distinct from result sorting. Counts represent the full saved collection. Keep old preferences compatible, retain list-search text while removing chips, and clear it on Clear filters. Disclosures/menus must remain keyboard-accessible; viewer menus dismiss on outside click/Escape. Details uses a responsive field grid, and title links retain a visible new-tab cue.
+The popup puts the collection first and distinguishes it from the Saved library; export/setup disclosures keep its ordinary state compact. The viewer's primary search stays visible, while Search options holds scope/exclusions and indicates active settings. Filter-option sorting is stored per group in facetOrder within existing version-1 preferences, distinct from result sorting. Counts represent the full saved collection. Keep old preferences compatible, retain list-search text while removing chips, and clear it on Clear filters. Disclosures/menus must remain keyboard-accessible; viewer menus dismiss on outside click/Escape. Details uses a responsive field grid, and title links retain a visible green new-tab cue before the position name.
 
 Save and a labelled ellipsis disclosure share a consistent alignment zone at the end of each title cell. There is no reserved actions column; expanded Details spans exactly the selected posting columns. Menus use manual native popovers in the browser top layer, so table overflow cannot clip them and opening one cannot change row geometry. Position from the disclosure's viewport rectangle, clamp to viewport edges and flip above when needed. Only one row menu opens; outside click/Escape dismisses it, as do scrolling and resizing. Restore focus after rendering and keyboard dismissal. jsdom verifies logical disclosure/focus state, while a browser must verify top-layer geometry. Compact desktop rows use shared padding/control-size tokens; coarse pointers receive larger targets. Desktop title cells stay visible while scrolling horizontally. The introductory instruction line and decorative search heading are omitted; the search input retains an accessible name. Below 600px rows use labelled cards with the same chosen columns; sorting remains available in Sort & columns. At 900px and below the existing filter panel moves into a native modal dialog, returned to its sidebar on wider windows. Done, Escape and backdrop dismissal return focus to Filters. Results and pagination retain their own viewport space. Replaced sort controls retain focus; chip removal focuses an adjacent chip or search, and removed library rows focus the next available action or result count.
 
@@ -131,3 +137,13 @@ Relative table cells expose the absolute source date on hover; absolute cells ex
 ## Generated geography assets
 
 scripts/geography.mjs checks generated assets, downloads/caches public GeoNames inputs only when necessary, verifies cached SHA-256 hashes, writes size-limited city chunks, and copies lockfile-pinned world-atlas boundaries. build.mjs calls ensureGeography before deleting previous dist output. setup:maps prepares missing assets; update:maps explicitly downloads a newer extract. Ignore public/maps/*.json and .cache/, retain SOURCES.txt and scripts. Geography tests use synthetic downloads; geometry tests read the dependency topology, so fresh npm ci + npm test requires no map download. There is no runtime network change.
+
+## Field search and company navigation
+
+Search scopes are all, title, organization, division, location and id. Literal queries/exclusions use only the selected field, with existing case/accent folding and title cleanup. Semantic scopes embed only the selected text; id scope uses keyword matching without inference. Search-option counts include every non-default scope. Snapshot refreshes preserve filters silently.
+
+Company buttons select one exact organization in the active collection and clear search constraints while retaining sort/display preferences. An in-memory return stack saves preferences, pagination, list scroll, map/list mode and facet-search text. Back restores these against current collection data, clamps pages through ordinary rendering, and returns focus to the company button or query. Pending query debounce is canceled on company navigation/return; semantic response revisions remain authoritative, and completed ranking does not reset restored pagination. History is tab-local and is not persisted with preferences.
+
+The search-mode selector keeps its label available to assistive technology without showing a heading above the dropdown.
+
+Clear filters is hidden until a query, exclusion, non-default search scope, selected facet, flag, date/count bound or expiry/unknown-deadline filter is active. Display preferences and facet-list search alone do not reveal it.

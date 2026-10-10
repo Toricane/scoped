@@ -86,3 +86,5 @@ savedRemoved:<id> holds `{ version: 1, id: <numeric string>, removedAt: <ISO tim
 ## Relative deadline display (0.5.4)
 
 relativeDeadlines defaults to false in each view’s version-1 preferences and is retained by Clear filters. It changes table presentation of future deadlines within fourteen local calendar days only; original deadlineText, deadline filtering/sorting, and exports remain unchanged.
+
+Viewer version-1 preferences accept scope values all, title, organization, division, location and id; missing/invalid scopes default to all. Older all/title preferences remain compatible. Company-search return history is held only in the open viewer and adds no storage or export fields.

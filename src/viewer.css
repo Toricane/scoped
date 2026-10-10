@@ -155,10 +155,12 @@ td[data-column=applications], th[data-column=applications] { text-align:end; }
 td { border-bottom-color:var(--row-line); }
 td[data-column=organization],td[data-column=location] { color:color-mix(in srgb,currentColor 65%,var(--muted)); }
 .ui-icon { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; vertical-align:-2px; }
-.posting-title a .ui-icon { width:11px; height:11px; margin-inline-start:4px; color:var(--green); }
+.posting-title a .ui-icon { width:11px; height:11px; margin-inline-end:4px; color:var(--green); }
 .posting-tools .save-posting { display:inline-flex; align-items:center; justify-content:center; gap:4px; }
 .row-actions .ui-icon { stroke-width:3; }
 .posting-flags { display:inline-flex; flex-wrap:wrap; gap:4px; margin-inline-start:7px; vertical-align:middle; }
+.relevance-row { position:relative; isolation:isolate; }
+.relevance-row::after { content:''; position:absolute; inset-inline-start:0; bottom:0; width:var(--relevance-width); height:2px; background:color-mix(in srgb,var(--green) 40%,var(--surface)); pointer-events:none; z-index:3; }
 .posting-flags .badge { font-weight:500; padding:1px 5px; font-size:10px; }
 @media(pointer:coarse) {
   :root { --row-control-size:44px; --toolbar-height:44px; }
@@ -179,3 +181,7 @@ td[data-column=organization],td[data-column=location] { color:color-mix(in srgb,
   .search-mode { flex:1; width:auto; flex-direction:row; align-items:center; }
   .search-mode select { min-height:42px; width:auto; flex:1; }
 }
+
+.company-search { background:none; border:0; padding:4px 0; color:inherit; font:inherit; text-align:left; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; }
+@media(hover:hover){.company-search:hover { color:var(--green); text-decoration-style:solid; }}
+@media(pointer:coarse){.company-search { min-height:44px; }}

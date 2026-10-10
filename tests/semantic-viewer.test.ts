@@ -31,17 +31,36 @@ it('renders related matches, keeps exact filters, and switches back to keyword s
   mocks.search.mockResolvedValue({ scores: new Map([['1001', 0.8], ['1002', 0.3]]), cacheAvailable: true });
   await import('../src/viewer'); await vi.waitFor(() => expect(rows()).toHaveLength(2));
   expect((rows()[0] as HTMLElement).dataset.save).toBe('1001');
+  expect(document.getElementById('search-feedback')!.hidden).toBe(true);
+  expect(document.getElementById('search-status')!.textContent).toBe('');
+  expect([...document.querySelectorAll('.relevance-score')].map(label => label.textContent)).toEqual(['Relevance 0.800', 'Relevance 0.300']);
+  expect(document.querySelector('.relevance-row')!.getAttribute('title')).toContain('server development');
+  expect([...document.querySelectorAll<HTMLElement>('.relevance-row')].map(row => row.style.getPropertyValue('--relevance-width'))).toEqual(['80%', '30%']);
+  expect(document.querySelector('.relevance-score')!.classList.contains('sr-only')).toBe(true);
   const location = document.querySelector<HTMLInputElement>('input[value="Vancouver, BC"]')!; location.checked = true; location.dispatchEvent(new Event('change'));
   expect(rows()).toHaveLength(1); expect(mocks.search).toHaveBeenCalledOnce();
   const mode = document.getElementById('searchMode') as HTMLSelectElement; mode.value = 'keyword'; mode.dispatchEvent(new Event('change'));
   expect(rows()).toHaveLength(0); expect(mocks.cancel).toHaveBeenCalled(); expect(document.getElementById('search-feedback')!.hidden).toBe(true);
+  expect(document.querySelector('.relevance-score')).toBeNull();
 });
 it('shows keyword fallback and supports explicit retry without an automatic retry loop', async () => {
   mocks.search.mockRejectedValueOnce(new Error('Failed')).mockResolvedValueOnce({ scores: new Map([['1001', 0.8]]), cacheAvailable: false });
   await import('../src/viewer'); await vi.waitFor(() => expect(document.getElementById('semantic-retry')!.hidden).toBe(false));
   expect(rows()).toHaveLength(0); expect(mocks.search).toHaveBeenCalledOnce();
+  expect(document.querySelector('.relevance-score')).toBeNull();
   document.getElementById('semantic-retry')!.click(); await vi.waitFor(() => expect(rows()).toHaveLength(1));
   expect(document.getElementById('search-status')!.textContent).toContain('Persistent cache unavailable');
+  expect(document.getElementById('search-feedback')!.hidden).toBe(false);
+});
+it('removes previous-query scores immediately during debounce and on column sorting retains current scores', async () => {
+  mocks.search.mockResolvedValueOnce({ scores: new Map([['1001', 0.8]]), cacheAvailable: true }).mockImplementationOnce(() => new Promise(() => {}));
+  await import('../src/viewer'); await vi.waitFor(() => expect(document.querySelector('.relevance-score')?.textContent).toBe('Relevance 0.800'));
+  const sort = document.getElementById('sort') as HTMLSelectElement; sort.value = 'jobTitle'; sort.dispatchEvent(new Event('change'));
+  expect(document.querySelector('.relevance-score')?.textContent).toBe('Relevance 0.800');
+  const query = document.getElementById('query') as HTMLInputElement; query.value = 'another query'; query.dispatchEvent(new Event('input'));
+  expect(document.querySelector('.relevance-score')).toBeNull();
+  await vi.waitFor(() => expect(mocks.search).toHaveBeenCalledTimes(2));
+  expect(document.querySelector('.relevance-row')).toBeNull();
 });
 it('rejects stale query and snapshot responses, including before the debounce finishes', async () => {
   const replies: ((value: unknown) => void)[] = [];

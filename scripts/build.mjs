@@ -20,13 +20,13 @@ for (const browser of ['firefox', 'chrome']) {
   await cp(staging, directory, { recursive: true });
   const manifest = {
     manifest_version: 3,
-    name: 'Scoped — SCOPE posting explorer', version: '0.6.0',
+    name: 'Scoped: SCOPE posting explorer', version: '0.6.0',
     description: 'Collect your SCOPE search, explore postings with fast local filters, and export CSV or JSON.',
     permissions: ['activeTab', 'scripting', 'storage', 'downloads'],
     host_permissions: ['https://scope.sciencecoop.ubc.ca/*'],
     content_security_policy: { extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self'; connect-src 'self'" },
     icons: Object.fromEntries([16, 32, 48, 96, 128].map(size => [size, `icons/scoped-${size}.png`])),
-    action: { default_title: 'Scoped — export SCOPE postings', default_popup: 'popup.html', default_icon: { 16: 'icons/scoped-16.png', 32: 'icons/scoped-32.png', 48: 'icons/scoped-48.png' } },
+    action: { default_title: 'Scoped: export SCOPE postings', default_popup: 'popup.html', default_icon: { 16: 'icons/scoped-16.png', 32: 'icons/scoped-32.png', 48: 'icons/scoped-48.png' } },
     background: browser === 'firefox' ? { scripts: ['background.js'] } : { service_worker: 'background.js' },
     ...(browser === 'firefox' ? { browser_specific_settings: { gecko: { id: 'scoped@scope-exporter.local', strict_min_version: '142.0', data_collection_permissions: { required: ['none'] } } } } : { minimum_chrome_version: '120' }),
   };

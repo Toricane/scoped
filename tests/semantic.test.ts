@@ -66,9 +66,21 @@ it('looks up exact numeric IDs without initializing inference', async () => {
   expect(await searchVectors({ revision: 1, query: '1001', documents: [{ id: '1001', text: 'Engineer' }, { id: '1002', text: '1001 Engineer' }] }, encode, memoryCache(), () => true, vi.fn())).toEqual([['1001', 1]]);
   expect(encode).not.toHaveBeenCalled();
 });
-it('reduces weak semantic overlap relative to the strongest hit without dropping literal matches', async () => {
+it('includes weaker semantic matches regardless of the strongest hit while preserving literal matches', async () => {
   const request = { revision: 1, query: 'backend engineer', documents: [{ id: '1001', text: 'Server Developer' }, { id: '1002', text: 'Graphic Designer' }, { id: '1003', text: 'Backend Engineer' }] };
   const encode = async (text: string) => text === 'Graphic Designer' ? vector(0.3, Math.sqrt(0.91)) : text === 'Backend Engineer' ? vector(0, 1) : vector();
   const scores = await searchVectors(request, encode, memoryCache(), () => true, vi.fn());
-  expect(scores?.map(([id]) => id)).toEqual(['1001', '1003']);
+  expect(scores?.map(([id]) => id)).toEqual(['1001', '1002', '1003']);
+});
+it('includes low-similarity rows down to 0.10 and excludes rows below it', () => {
+  const document = { id: '1001', text: 'Related role' };
+  expect(relevance('backend engineer', document, vector(), vector(0.15, Math.sqrt(1 - 0.15 ** 2)))).toBeCloseTo(0.1275);
+  expect(relevance('backend engineer', document, vector(), vector(0.09, Math.sqrt(1 - 0.09 ** 2)))).toBeUndefined();
+});
+
+it('embeds only the chosen organization, division or location field', () => {
+  const posting = { id: '123', jobTitle: 'Engineer', organization: 'Example Company', division: 'Research', location: 'Vancouver' } as Posting;
+  expect(semanticText(posting, 'organization')).toBe('Organization: Example Company');
+  expect(semanticText(posting, 'division')).toBe('Division: Research');
+  expect(semanticText(posting, 'location')).toBe('Location: Vancouver');
 });

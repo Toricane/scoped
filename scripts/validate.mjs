@@ -46,6 +46,8 @@ for (const browser of ['firefox', 'chrome']) {
   }
   for (const page of ['popup', 'viewer', 'posting']) {
     const html = await readFile(new URL(`${page}.html`, root), 'utf8');
+    assert(/<link\b[^>]*rel="icon"[^>]*href="(?:\.\/)?icons\/scoped-32\.png"/.test(html) || /<link\b[^>]*rel="icon"[^>]*href="\/icons\/scoped-32\.png"/.test(html), `${page}: packaged tab icon is missing`);
+    assert(!html.match(/<title>[^<]*—/), `${page}: interface tab title contains an em dash`);
     for (const match of html.matchAll(/(?:src|href)="(\.\/[^"#]+)"/g)) await stat(new URL(match[1], root));
   }
   const assets = await readdir(new URL('assets/', root));
