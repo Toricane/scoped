@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Scoped — postings</title></head>
+<body>
+  <header class="masthead"><div class="brand"><img src="/icons/scoped-96.png" width="48" height="48" alt=""><div><h1>Scoped</h1><p id="snapshot-info">Loading your saved postings…</p></div></div><div class="actions"><button id="csv" disabled>Download CSV</button><button id="json" disabled>Download JSON</button></div></header>
+  <main>
+    <p class="notice">Viewing your last collected SCOPE search. To refresh, return to SCOPE and open the Scoped popup. Click a position title to search its ID in a new SCOPE tab.</p>
+    <p id="error" role="alert" hidden></p><p id="update" role="status" hidden>Updated collection loaded. Your filters are preserved.</p>
+    <section class="searchbar" aria-label="Search postings"><label class="search">Search postings<input id="query" type="search" placeholder='Try python Vancouver or "machine learning"'></label><label>Search in<select id="scope"><option value="all">Title, organization, division, location, ID</option><option value="title">Titles only</option></select></label><label>Exclude words<input id="exclude" type="search" placeholder="Words or quoted phrases"></label><p class="help">All search terms must match. Quotes keep a phrase together. Any excluded term removes a result. Search uses captured table text.</p></section>
+    <div class="workspace">
+      <details id="filter-panel" class="filters" open><summary>Filters</summary><div class="filter-body">
+        <div id="facets"></div>
+        <label>New on SCOPE<select id="isNew"><option value="all">All</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label>Shortlisted on SCOPE<select id="shortlisted"><option value="all">All</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <details><summary>More filters</summary><div class="advanced">
+          <div id="extra-facets"></div>
+          <label>Deadline from<input id="from" type="date"></label><label>Deadline through<input id="to" type="date"></label>
+          <label class="check"><input id="unknownDeadline" type="checkbox">Only unknown deadlines</label>
+          <label>Minimum applications<input id="min" type="number" min="0" step="1"></label><label>Maximum applications<input id="max" type="number" min="0" step="1"></label>
+          <p class="help">Dates use SCOPE’s calendar values; no timezone is assumed. Blank application counts are different from zero.</p>
+        </div></details>
+      </div></details>
+      <section class="results" aria-label="Posting results">
+        <div class="result-tools"><p id="count" role="status"></p><button id="reset" class="secondary">Clear filters</button><label>Sort by<select id="sort"></select></label><label>Order<select id="direction"><option value="asc">Ascending</option><option value="desc">Descending</option></select></label><details class="columns"><summary>Columns</summary><div id="column-options"></div></details></div>
+        <div id="chips" class="chips" aria-label="Active filters"></div>
+        <p id="empty" hidden></p>
+        <div class="table-scroll"><table id="postings"><caption class="sr-only">Saved SCOPE postings. Position titles open a new tab; Details shows captured fields.</caption><thead id="headers"></thead><tbody id="rows"></tbody></table></div>
+        <nav class="pagination" aria-label="Result pages"><button id="previous" class="secondary">Previous</button><span id="page-label"></span><button id="next" class="secondary">Next</button><label>Rows per page<select id="pageSize"><option>25</option><option selected>50</option><option>100</option></select></label></nav>
+      </section>
+    </div>
+  </main><script type="module" src="/src/viewer.ts"></script>
+</body></html>
