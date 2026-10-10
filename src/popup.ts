@@ -26,8 +26,11 @@ function render(): void {
   start.textContent = snapshot ? 'Refresh collection' : 'Start collection';
   cancel.disabled = !active || pending || run?.status === 'canceling';
   csv.disabled = json.disabled = !snapshot;
-  element('source-hint').textContent = tabId === undefined ? 'Open SCOPE search results, then reopen this popup. Your saved snapshot is still available below.' : 'All pages of your current search. Your filters stay in place.';
-  element('status').textContent = run?.message ?? 'Ready to collect.';
+  element('source-hint').textContent = tabId === undefined ? 'Open SCOPE search results to collect or refresh. Your saved postings are ready to view above.' : 'Collect every page of this search. Your SCOPE filters stay in place.';
+  element('status').textContent = run?.message ?? (tabId === undefined ? 'Collection needs an open SCOPE results tab.' : 'Ready to collect your current search.');
+  element('status').hidden = (!run && tabId === undefined) || run?.status === 'complete';
+  element('progress').hidden = !active;
+  element('counts').hidden = !run;
   element('counts').textContent = run ? `Page ${run.currentPage || '—'} · ${run.collected.toLocaleString()} / ${run.total.toLocaleString()} postings` : 'No collection running.';
   const progress = element<HTMLProgressElement>('progress');
   progress.max = Math.max(1, run?.total ?? 1);
@@ -66,6 +69,7 @@ cancel.addEventListener('click', () => void action('cancel'));
 csv.addEventListener('click', () => void download('csv'));
 json.addEventListener('click', () => void download('json'));
 element('view').addEventListener('click', () => { void api.tabs.create({ url: api.runtime.getURL('viewer.html') }).catch(showError); });
+element('view-saved').addEventListener('click', () => { void api.tabs.create({ url: api.runtime.getURL('viewer.html?view=saved') }).catch(showError); });
 api.storage.onChanged.addListener((_changes, area) => { if (area === 'local') void refresh(); });
 async function initialize(): Promise<void> {
   try {
@@ -76,3 +80,5 @@ async function initialize(): Promise<void> {
 }
 void initialize();
 mountSiteAccess(element('site-access'), initialize);
+
+element('view-applied').addEventListener('click', () => { void api.tabs.create({ url: api.runtime.getURL('viewer.html?view=applied') }).catch(showError); });

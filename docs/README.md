@@ -5,6 +5,8 @@
 - [README](../README.md): build/install, SCOPE access, collection, viewer, troubleshooting, privacy, and limitations.
 - [Data format](data-format.md): exported fields, JSON/CSV conventions, local storage, and compatibility.
 - [Acceptance status](acceptance.md): current evidence and live browser checklist.
+- [Globe and geography](geography.md): offline location matching, controls, data sources, and limits.
+- [Feature roadmap](features-roadmap.md): proposed next features for fast review and better decisions.
 
 ## Developing Scoped
 

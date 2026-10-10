@@ -30,6 +30,10 @@ async function openPopup(): Promise<void> {
 }
 
 describe('toolbar popup', () => {
+  it('opens Saved postings in a separate extension tab', async () => {
+    await openPopup(); button('view-saved').click();
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'chrome-extension://scoped/viewer.html?view=saved' });
+  });
   it('requests only SCOPE access on click and refreshes the source without starting collection', async () => {
     await openPopup();
     expect(chrome.permissions.request).not.toHaveBeenCalled();
@@ -66,6 +70,9 @@ describe('toolbar popup', () => {
     await openPopup();
     expect(button('start').disabled).toBe(true);
     expect(button('cancel').disabled).toBe(true);
+    expect(document.getElementById('progress')!.hidden).toBe(true);
+    expect(document.getElementById('status')!.hidden).toBe(true);
+    expect((document.getElementById('access-panel') as HTMLDetailsElement).open).toBe(false);
     button('json').click();
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith({ type: 'download', format: 'json' }));
   });

@@ -21,9 +21,12 @@ export function mountSiteAccess(container: HTMLElement, onGranted?: () => Promis
     if (revision !== 0) return;
     status.textContent = granted ? 'SCOPE access is enabled.' : 'SCOPE access is needed to open positions.';
     help.open = !granted || help.open;
+    const panel = container.closest<HTMLDetailsElement>('#access-panel');
+    if (panel && !granted) panel.open = true;
   }).catch(() => {
     if (revision !== 0) return;
     status.textContent = 'Check SCOPE access using the instructions below.'; help.open = true;
+    const panel = container.closest<HTMLDetailsElement>('#access-panel'); if (panel) panel.open = true;
   });
   button.addEventListener('click', async () => {
     revision++;

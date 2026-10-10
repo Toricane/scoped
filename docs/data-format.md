@@ -26,7 +26,7 @@ CSV columns use this exact order; JSON uses these property names:
 6. `division`: full text, preferring the source full-text attribute.
 7. `location`: source text; no remote/province classification is invented.
 8. `applications`: nonnegative integer or empty string for a blank source value.
-9. `deadlineText`: original normalized text. No timezone, expiry, or countdown is inferred.
+9. `deadlineText`: original normalized text. The raw export contains no inferred timezone or expiry; the viewer interprets it in browser-local time.
 10. `isNew`: boolean from SCOPE's row flag, rather than changes detected by Scoped.
 11. `shortlisted`: boolean from SCOPE's row flag at collection time.
 12. `postingLink`: optional compatibility descriptor, either `{ "kind": "url", "url": "..." }` for a genuine same-origin HTTPS link or `{ "kind": "scope", "page": 2 }` for its source result page. Absent values export as blank CSV cells.
@@ -49,6 +49,36 @@ Both formats download as scope-postings-<collection timestamp>.<csv|json>, with 
 - `run:<tabId>`: run ID, source tab/URL, status, start time, message, current page, unique collected count, and total. Status is running, canceling, complete, canceled, or error.
 - `viewerPreferences:v1`: versioned search/filter/sort/page-size/column preferences, separate from posting data.
 
+Preferences also contain `facetOrder` for organizations, locations, statuses, and terms. Values are az, za, count, or selected. Missing/invalid values in older preferences default to az. These controls reorder filter choices only; they do not sort results or change the snapshot. Option counts are counts in the entire saved collection, including zero-count selections retained from a previous snapshot. Clear filters preserves option order, result sort, columns, and page size while clearing list-search text and actual filters.
+
 A successful commit writes the snapshot and complete run state together. Before commit, schema/source/total/count/unique IDs must match the running collection. Failed/canceled runs preserve the previous snapshot. The old snapshot source-tab ID is no longer written or used for posting navigation.
 
 There is no history, scheduling, external server, telemetry, or upload. Storage is browser-profile local and temporary Firefox installs are not a dependable permanent backup. Download important snapshots; see [installation guidance](../README.md).
+
+## Saved and geography storage
+
+`saved:<id>` contains `{ version: 1, savedAt: <ISO timestamp>, posting: <captured Posting> }`. It is an independent local save, never a change to SCOPE's shortlisted flag. Individual keys support serialized background mutations without overwriting another tab's saves. A successful collection atomically updates saved copies present in the new search alongside the snapshot/run; absent Saved IDs retain their last captured copy. Failure/cancellation leaves them intact. Remove from Saved deletes the copy and stores a local exclusion.
+
+`viewerPreferences:saved:v1` holds the Saved tab's preferences independently of All postings. Saved rendering unions current SCOPE-shortlisted rows with local retained records, excluding Applied and locally removed IDs; it combines current values with retained records and validates each record before display. Opening supports current-snapshot membership or a valid Saved/Applied record. Retention is one current captured copy per saved ID, not collection-version history. Invalid records are left stored but excluded from display.
+
+Current CSV/JSON exports do not include local Saved/Applied libraries or annotations. Backup/import for Saved is proposed in the [feature roadmap](features-roadmap.md). Browser-profile loss/uninstall or temporary Firefox storage loss can lose local saves.
+
+The globe derives approximate city coordinates in memory from packaged public geography. No coordinate fields are added to Posting, raw exports, or snapshot schema. Geography JSON files are ignored generated assets prepared by the build and bundled into the extension, not extension storage; no private posting data is placed in them. See [geography reference](geography.md).
+
+## Applied and deadline preferences (0.5.0)
+
+applied:<id> contains `{ version: 1, appliedAt: <ISO timestamp>, posting: <captured Posting> }`. It is explicitly marked locally, with Saved's validation/retention/success-only update rules. viewerPreferences:applied:v1 stores separate preferences. Valid Applied records authorize explicit posting opening. Undo deletes only the Applied key, allowing a local save or current SCOPE shortlist to return to Saved.
+
+SCOPE-only entries follow the current snapshot; explicit local saves retain a copy. Preferences add hideExpired (false) and expiredLast (true). Expiry interprets valid displayed dates/times in the user's browser-local timezone; unknown deadlines never expire. Snapshot schema 1, original deadlineText, captured shortlisted, and raw CSV/JSON remain unchanged. Neither local library is included in exports.
+
+## Grouped location preference (0.5.1)
+
+groupGreaterVancouver defaults to false in each view's preferences. locations can contain group:greater-vancouver when enabled; the token matches the six explicit BC member cities. This is viewer-only aggregation, not a Posting location rewrite or schema/export change. Clear filters retains the grouping preference.
+
+## Local Saved removal (0.5.3)
+
+savedRemoved:<id> holds `{ version: 1, id: <numeric string>, removedAt: <ISO timestamp> }`. It excludes the ID from Saved even when SCOPE still marks it shortlisted or a stale saved copy remains. Refresh/Applied undo do not clear it; Save clears it and retains a copy. Exclusions are validated, local, and excluded from exports; they never change SCOPE or authorize posting opening.
+
+## Relative deadline display (0.5.4)
+
+relativeDeadlines defaults to false in each view’s version-1 preferences and is retained by Clear filters. It changes table presentation of future deadlines within fourteen local calendar days only; original deadlineText, deadline filtering/sorting, and exports remain unchanged.

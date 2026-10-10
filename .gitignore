@@ -3,3 +3,7 @@ dist/
 coverage/
 *.zip
 *.csv
+
+# Generated offline geography; keep scripts and attribution, not data blobs.
+.cache/
+public/maps/*.json

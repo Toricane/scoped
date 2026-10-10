@@ -1,6 +1,6 @@
 # Scoped
 
-Scoped is a Firefox-first, Chrome-compatible extension for collecting and exploring your UBC SCOPE job-posting search. Collect all result pages once, then search, filter, and sort locally. Download CSV/JSON or click a position title to open it in SCOPE.
+Scoped is a Firefox-first, Chrome-compatible extension for collecting and exploring your UBC SCOPE job-posting search. Collect all result pages once, then search, filter, sort, save positions, or explore their cities on a globe. Download CSV/JSON or click a position title to open it in SCOPE.
 
 Everything stays in your browser. Collection reads the results table and never opens individual postings or clicks Apply/Shortlist actions.
 
@@ -13,6 +13,8 @@ npm ci
 npm run build
 npm run validate
 ```
+
+The first build prepares offline maps and needs internet access to download public GeoNames data. Later builds reuse the local assets. You can prepare them explicitly with `npm run setup:maps`, or refresh the public dataset with `npm run update:maps`. Generated JSON and the download cache are ignored by Git; commit the preparation scripts and attribution file instead. The installed extension still works offline.
 
 ### Firefox / Zen
 
@@ -32,7 +34,7 @@ After rebuilding, reload the extension through its browser management page and r
 
 ## Allow SCOPE access
 
-Choose **Allow SCOPE access** in the popup or posting opener. It requests access only to `https://scope.sciencecoop.ubc.ca/*`. After a successful grant, the opener retries the position automatically.
+Expand **Site access & setup** in the popup, or use the posting opener, and choose **Allow SCOPE access**. It requests access only to `https://scope.sciencecoop.ubc.ca/*`. After a successful grant, the opener retries the position automatically. Setup expands automatically when access is missing.
 
 SCOPE access is declared as an install-time permission, so the browser can grant it by default. Scoped cannot force **Always Allow** or override a browser's decision to withhold access. Permission prompts happen only after clicking the button.
 
@@ -49,7 +51,7 @@ Return to the opener and choose **Try again** after a manual change. **Only When
 2. Apply your desired SCOPE filters. Clear them first if you want all available postings.
 3. Click Scoped in that SCOPE tab and choose **Start collection**.
 4. Leave the tab open and avoid changing its filters, sorting, or pagination. Scoped starts at page 1 and leaves SCOPE on the final collected page.
-5. Wait for **Collection complete**, then choose **View postings**, **Download CSV**, or **Download JSON**.
+5. Wait for **Collection complete**, then choose **View postings**. To download CSV/JSON, expand **Export your collection** in the popup or **Export postings** in the viewer.
 6. To update, return to your SCOPE search and choose **Refresh collection** in the popup.
 
 Closing the popup does not stop collection. Reopen it from the same SCOPE tab to see progress or cancel. Cancel stops further navigation; an already requested page may finish loading. Closing, reloading, or navigating the source tab stops the run. Failed or canceled refreshes keep the previous successful snapshot.
@@ -61,12 +63,41 @@ The popup can open the viewer and export an existing snapshot from another websi
 The viewer opens in a separate extension tab using your latest complete snapshot; no CSV import is required. It works without an open SCOPE tab.
 
 - Search title, organization, division, location, and ID, or titles only. All search words must match. Quotes keep a phrase together; any excluded word/phrase removes a result. Matching ignores case and accents.
+- Open **Search options** to choose titles only or enter exclusions. Each filter group has an **Options order** control: Name A–Z, Name Z–A, Most postings, or Selected first. Counts describe the entire saved collection; ordering is remembered separately from result sorting.
 - Combine organization/location selections, new/shortlisted flags, application status (including blank), term, deadline dates, and application-count limits. Values within a selection group use OR; different filters use AND.
-- Sort by deadline, application count, ID, or other available columns. Blank/unknown values sort last. Dates use SCOPE's calendar text without timezone conversion or expiry guesses.
+- Sort by deadline, application count, ID, or other available columns. Blank/unknown values sort last. Deadlines use your browser’s local timezone; unknown values never expire.
 - Choose columns, expand **Details**, or copy an ID. Position names hide their matching trailing posting ID/code; storage and exports keep the original title.
 - All filters apply to the entire snapshot. Results use local pagination, and results/sidebar scroll independently while page controls remain visible. Preferences are remembered; successful refreshes update an open viewer while preserving filters.
 
 **Click a position title** to open it in a new tab. Scoped loads SCOPE's postings overview, enters the ID in **Search Posting**, and clicks that panel's **Search**. It uses your signed-in session without changing the collection tab. Older snapshots work without refreshed link metadata. This action does not submit an application or change shortlist status.
+
+## Saved, Applied, and deadlines
+
+**Save** retains a position locally. **Saved** opens a separate tab with local saves and positions shortlisted in the latest captured SCOPE search, deduplicated by ID. SCOPE entries show a source label. **Remove from Saved** removes either kind of entry and keeps it removed after refresh, without changing SCOPE. Restore it with **Save** in All postings. Explicit local saves retain a copy across collections; automatic SCOPE entries follow the latest captured shortlist.
+
+After submitting an application, click **Mark applied**. It moves the position out of Saved into the separate **Applied** tab. **Applied · Undo** removes the mark and returns it to Saved if it is locally saved or in the captured SCOPE shortlist and has not been removed locally. These actions stay local to Scoped; they never submit an application or change SCOPE. The popup opens both libraries directly. Each view remembers its own filters.
+
+Successful refresh updates retained copies when the ID is present. Missing local Saved/Applied entries remain available with **Not in latest search**; absence from a filtered search does not prove expiry.
+
+Deadline dates and times are interpreted in **your browser's local timezone**. Once the displayed time passes, the position shows **Expired**, dims, and sorts last by default. Use **Hide expired positions** or turn off **Show expired positions last**. Unknown deadlines never expire. Labels update while the viewer is open. Exports preserve original text; the timezone is an interpretation, not a verified SCOPE timezone.
+
+**Relative deadlines (next 2 weeks)** displays upcoming deadlines as “in 3 days,” “in 2 hours,” or “in 30 minutes.” Past, unknown, and later deadlines keep their original text. Hover a relative deadline to see its exact date; hover an exact date to see the relative time, including past or more distant deadlines. Details also supports this hover behavior. This display toggle is remembered per view and does not filter results or change exports.
+
+## Greater Vancouver grouping
+
+In **Locations**, enable **Group Greater Vancouver** to combine Vancouver, North Vancouver, Burnaby, Richmond, Delta, and Surrey into one filter choice and globe circle. It matches BC-labelled locations plus the province-free “North Vancouver” variant found in SCOPE; similarly named places elsewhere remain separate. This is a convenience group of those six cities, not a complete regional boundary.
+
+The option is off by default and remembered separately in All, Saved, and Applied. Enabling it with a member city selected widens the selection to the group; disabling it expands the selected group back into its available city choices. Original locations stay visible in rows, Details, searches, and exports. Clear filters keeps the grouping preference.
+
+## Explore locations
+
+Choose **Globe** in any collection. Drag to rotate, scroll to zoom toward the cursor, or use zoom buttons and keyboard arrows. Zoom supports up to 80× and automatically loads finer offline coastlines and borders as you zoom in; globe movement slows down at higher zoom. **Flat map** provides a movable planar alternative.
+
+Circle area is proportional to the filtered posting count. Hover or keyboard-focus a circle to see its location and count as text directly on the map. Click it or a city-list button to return to the matching list. Search and filters apply before map aggregation.
+
+City matching is entirely offline using bundled geography. Pins represent approximate city centres. Ambiguous names, broad labels like Various Locations, and absent places remain in a selectable **Unmapped locations** list. See [geography reference](docs/geography.md).
+
+Saved/Applied records remain browser-local. CSV/JSON export the latest SCOPE collection, not these libraries. Uninstalling or losing temporary-install storage may lose the libraries. Backup/import remains proposed; see [future features](docs/features-roadmap.md).
 
 ## Troubleshooting
 
@@ -91,4 +122,4 @@ Imports, filtered exports, named saved searches, notes, history, scheduling, ran
 
 Start at the [documentation index](docs/README.md). Contributors use the [development guide](docs/development.md); AI coding agents start with [AGENTS.md](AGENTS.md). The [page reference](docs/scope-page-structure.md) describes inspected SCOPE markup, and [acceptance status](docs/acceptance.md) separates automated evidence from live checks. [Icon documentation](docs/icon.md) records the approved artwork.
 
-Version 0.3.3 has 82 passing tests, successful TypeScript/build/package checks, and clean Mozilla lint. The user confirmed Firefox collection, posting opening with persistent access, and the latest permission-setup fix. Chrome live smoke tests and individually unreported edge cases remain pending; see the acceptance document for precise coverage.
+Version 0.5.5 has 127 passing tests, successful TypeScript/build/package checks, and clean Mozilla lint. Saved and globe controls have been tested locally, including city selection, rotation, zoom, flat mode, and narrow layouts. The user confirmed Firefox collection, posting opening with persistent access, and the permission-setup fix on earlier versions. Live acceptance of Saved/Applied/globe, Chrome smoke tests, and individually unreported edge cases remain pending; see the acceptance document for precise coverage.

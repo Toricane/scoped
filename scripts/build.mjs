@@ -1,9 +1,11 @@
 import { build } from 'vite';
+import { ensureGeography } from './geography.mjs';
 import { mkdir, rm, cp, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+await ensureGeography(root);
 const staging = resolve(root, 'dist/shared');
 await rm(resolve(root, 'dist'), { recursive: true, force: true });
 await build({ root, base: './', build: { outDir: staging, emptyOutDir: true, rollupOptions: { input: ['popup', 'viewer', 'posting'].map(page => resolve(root, `${page}.html`)) } } });
@@ -16,7 +18,7 @@ for (const browser of ['firefox', 'chrome']) {
   await cp(staging, directory, { recursive: true });
   const manifest = {
     manifest_version: 3,
-    name: 'Scoped — SCOPE posting explorer', version: '0.3.3',
+    name: 'Scoped — SCOPE posting explorer', version: '0.5.5',
     description: 'Collect your SCOPE search, explore postings with fast local filters, and export CSV or JSON.',
     permissions: ['activeTab', 'scripting', 'storage', 'downloads'],
     host_permissions: ['https://scope.sciencecoop.ubc.ca/*'],

@@ -75,3 +75,49 @@ Keep the source CSV ignored and unchanged. Do not commit account markup, session
 ## Technical references
 
 [Agent invariants](../AGENTS.md), [DOM adapter evidence](scope-page-structure.md), [data contract](data-format.md), and [browser acceptance](acceptance.md) are current references. [Historical notes](history/acceptance-history.md) explain abandoned approaches but are not implementation requirements.
+
+## Interface conventions
+
+The popup puts saved postings first; export/setup disclosures keep its ordinary state compact. The viewer's primary search stays visible, while Search options holds scope/exclusions and indicates active settings. Filter-option sorting is stored per group in facetOrder within existing version-1 preferences, distinct from result sorting. Counts represent the full saved collection. Keep old preferences compatible, retain list-search text while removing chips, and clear it on Clear filters. Disclosures/menus must remain keyboard-accessible; viewer menus dismiss on outside click/Escape. Details uses a responsive field grid, and title links retain a visible new-tab cue.
+
+## Local Saved and Applied libraries
+
+`src/saved.ts` validates saved:<id> (version, savedAt, posting) and applied:<id> (version, appliedAt, posting). getLibrary returns validated records; getSaved remains compatible. setSaved/setApplied validate extension senders, numeric string IDs, and booleans. Mutations share the storage queue; removing a mark deletes only its per-ID key.
+
+Saved unions local saves with current SCOPE-shortlisted rows, deduplicating IDs and excluding Applied. Remove from Saved excludes either kind of entry through savedRemoved:<id> and removes any saved copy; it never changes the captured SCOPE flag. Save clears the exclusion and stores a local copy. Applied is explicitly user-marked, never inferred from clicks or applicationStatus. Undo restores Saved membership when applicable.
+
+Successful snapshot commits atomically update present-ID copies in both libraries while preserving timestamps; missing IDs remain retained. Failed/canceled runs leave them intact. Rendering prefers current values, labeling retained-only rows without inferring expiry. The opener accepts current, validated Saved, or validated Applied membership.
+
+All/Saved/Applied preferences are separate. All support filtering/list/map and raw full-snapshot exports. Storage subscriptions watch snapshot and Saved/Applied/removal prefixes with stale-read protection.
+
+## Deadline interpretation
+
+The user requested browser-local timezone inference. isExpired converts validated calendar/time components to a local Date, including AM/PM, and compares against now. Same-day expiry follows the time; missing/unparseable deadlines never expire. Raw exports preserve text without inferred timezone metadata. Expired-last ordering precedes chosen result sorting and can be disabled; Hide expired is optional. Version-1 preference defaults remain compatible. The open viewer reevaluates deadlines each minute.
+
+## Location explorer
+
+src/location-model.ts handles offline matching, grouping, unresolved records, and area-proportional radii. src/globe.ts lazy-loads local geography, draws SVG with d3-geo/topojson-client, and provides rotation/panning/zoom, globe/flat projections, keyboard controls, and city/unmapped buttons. City selection returns to the list with matching source locations selected. Group across all filtered matches, not the visible table page. Keep ambiguous locations selectable outside the globe and never upload posting strings for geocoding. See [geography reference](geography.md) for regeneration, file-size limits, licenses, and boundaries.
+
+## Greater Vancouver convenience group
+
+src/location-groups.ts defines six BC cities, including an explicit province-free North Vancouver exception observed in SCOPE and a reserved group:greater-vancouver filter token. It does not model an official boundary. groupGreaterVancouver is an optional version-1 preference, default false, separate per view and preserved by Clear filters. Facet choices/counts and globe aggregation use the same matcher; raw postings/search/export fields are untouched. Enabling converts selected member locations to the group; disabling expands to available source locations. A grouped globe click selects the group. Globe aggregation uses the bundled Vancouver centre (fallback: first resolved member centre); a recognized member whose standalone name is unresolved can use that bundled group centre. Other unresolved rows retain existing unmapped behavior.
+
+Globe boundary detail is adaptive: base countries.json at overview zoom, cached/lazy countries-50m.json at 2×, countries-10m.json at 6×. Select current level on each draw; retain lower-detail fallback on loading/failure and never continuously retry a failed asset. Package validation checks all topology files and Mozilla's size limit. Geography regeneration copies all three from installed world-atlas.
+
+## Location formatting and Saved removals (0.5.3)
+
+src/location-text.ts normalizes missing comma/dot separators before Canadian province codes and ignores punctuation-only comma fields. Location matching and Greater Vancouver membership share it. City-suffix aliases and shortened Canadian Greater-prefixed names still require one candidate and agreement of all substantive region/country hints.
+
+getLibrary includes validated savedRemoved:<id> records ({version:1,id,removedAt}). Removal writes the exclusion before deleting the saved copy; exclusions take precedence if both temporarily exist. Save writes a retained record then clears the exclusion. Mutations remain serialized; collection commits do not modify exclusions. Removal records cannot authorize opening absent postings. Applied undo respects prior removals.
+
+## Relative deadlines and compact controls (0.5.4)
+
+The three deadline checkboxes share a compact grid with 2px internal spacing. relativeDeadlines is a version-1 boolean preference (false by default), independent per view and preserved by Clear filters. localDeadline is the shared local-time conversion used for expiry and relative display. relativeDeadline applies only to future values through fourteen local calendar days; it formats rounded remaining days/hours/minutes, with a sub-minute label. The table retains the source deadline in title/aria-label; Details, sorting/filtering, snapshot, and exports retain absolute source values. Relative labels refresh each minute and when the document becomes visible.
+
+## Reciprocal deadline hover (0.5.5)
+
+Relative table cells expose the absolute source date on hover; absolute cells expose a relative counterpart even outside the two-week display window or in the past. Details keeps absolute values and also exposes relative hover. relativeDeadlineTime computes the unrestricted counterpart; relativeDeadline retains the two-week display limit. deadlineHover updates title/aria-label on creation and mouseenter/focus so absolute-view hover remains fresh without periodically rerendering the table. Unknown values have no invented counterpart.
+
+## Generated geography assets
+
+scripts/geography.mjs checks generated assets, downloads/caches public GeoNames inputs only when necessary, verifies cached SHA-256 hashes, writes size-limited city chunks, and copies lockfile-pinned world-atlas boundaries. build.mjs calls ensureGeography before deleting previous dist output. setup:maps prepares missing assets; update:maps explicitly downloads a newer extract. Ignore public/maps/*.json and .cache/, retain SOURCES.txt and scripts. Geography tests use synthetic downloads; geometry tests read the dependency topology, so fresh npm ci + npm test requires no map download. There is no runtime network change.

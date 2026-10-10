@@ -1,27 +1,36 @@
+import { greaterVancouverKey, isGreaterVancouver } from './location-groups';
 import { isSourceUrl, type Posting, type Snapshot } from './types';
 
-export const columnLabels = { jobTitle: 'Job title', organization: 'Organization', location: 'Location', deadlineText: 'Deadline', applications: 'Applications', isNew: 'New on SCOPE', shortlisted: 'Shortlisted', id: 'ID', term: 'Term', division: 'Division', applicationStatus: 'Application status' };
+export const columnLabels = { jobTitle: 'Job title', organization: 'Organization', location: 'Location', deadlineText: 'Deadline', applications: 'Applications', isNew: 'New on SCOPE', shortlisted: 'SCOPE shortlist', id: 'ID', term: 'Term', division: 'Division', applicationStatus: 'Application status' };
 export type Column = keyof typeof columnLabels;
-export const defaultColumns: Column[] = ['jobTitle', 'organization', 'location', 'deadlineText', 'applications', 'isNew', 'shortlisted'];
+export const defaultColumns: Column[] = ['jobTitle', 'organization', 'location', 'deadlineText', 'applications', 'isNew'];
 type Flag = 'all' | 'yes' | 'no';
 export interface Preferences {
   version: 1; query: string; exclude: string; scope: 'all' | 'title';
-  organizations: string[]; locations: string[]; statuses: string[]; terms: string[];
-  isNew: Flag; shortlisted: Flag; from: string; to: string; unknownDeadline: boolean;
+  groupGreaterVancouver: boolean; organizations: string[]; locations: string[]; statuses: string[]; terms: string[];
+  facetOrder: Record<'organizations' | 'locations' | 'statuses' | 'terms', FacetOrder>;
+  isNew: Flag; shortlisted: Flag; from: string; to: string; unknownDeadline: boolean; hideExpired: boolean; expiredLast: boolean; relativeDeadlines: boolean;
   min: string; max: string; sort: Column; direction: 'asc' | 'desc'; pageSize: 25 | 50 | 100; columns: Column[];
 }
 export const preferencesKey = 'viewerPreferences:v1';
+export type FacetOrder = 'az' | 'za' | 'count' | 'selected';
 /** Presentation only: retain employer requisition numbers and source export text. */
 export function positionTitle(posting: Posting): string {
   return posting.jobTitle.replace(new RegExp(`\\s+${posting.id}[A-Za-z]*(?=\\s+E\\d+\\s*$|\\s*$)`), '').trim() || posting.jobTitle;
 }
 export function defaults(): Preferences {
-  return { version: 1, query: '', exclude: '', scope: 'all', organizations: [], locations: [], statuses: [], terms: [], isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 50, columns: [...defaultColumns] };
+  return { version: 1, query: '', exclude: '', scope: 'all', groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 50, columns: [...defaultColumns] };
 }
 export function readPreferences(value: unknown): Preferences {
   const result = defaults();
   if (!value || typeof value !== 'object' || (value as Preferences).version !== 1) return result;
   const stored = value as Record<string, unknown>;
+  if (stored.facetOrder && typeof stored.facetOrder === 'object') {
+    for (const key of ['organizations', 'locations', 'statuses', 'terms'] as const) {
+      const order = (stored.facetOrder as Record<string, unknown>)[key];
+      if (['az', 'za', 'count', 'selected'].includes(String(order))) result.facetOrder[key] = order as FacetOrder;
+    }
+  }
   for (const key of ['query', 'exclude', 'from', 'to', 'min', 'max'] as const) if (typeof stored[key] === 'string') result[key] = (stored[key] as string).slice(0, 2000);
   for (const key of ['organizations', 'locations', 'statuses', 'terms'] as const) if (Array.isArray(stored[key])) result[key] = [...new Set((stored[key] as unknown[]).filter((entry): entry is string => typeof entry === 'string'))];
   for (const key of ['isNew', 'shortlisted'] as const) if (['all', 'yes', 'no'].includes(String(stored[key]))) result[key] = stored[key] as Flag;
@@ -29,6 +38,7 @@ export function readPreferences(value: unknown): Preferences {
   if (stored.direction === 'desc') result.direction = 'desc';
   if (typeof stored.sort === 'string' && Object.hasOwn(columnLabels, stored.sort)) result.sort = stored.sort as Column;
   if ([25, 50, 100].includes(Number(stored.pageSize))) result.pageSize = stored.pageSize as Preferences['pageSize'];
+  for (const key of ['hideExpired', 'expiredLast', 'groupGreaterVancouver', 'relativeDeadlines'] as const) if (typeof stored[key] === 'boolean') result[key] = stored[key];
   if (stored.unknownDeadline === true) result.unknownDeadline = true;
   if (Array.isArray(stored.columns)) {
     result.columns = [...new Set(stored.columns.filter((entry): entry is Column => typeof entry === 'string' && Object.hasOwn(columnLabels, entry)))];
@@ -72,19 +82,56 @@ export function deadline(text: string): { key: number; date: string } | undefine
   const date = `${match[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   return { date, key: Number(date.replaceAll('-', '') + String(hour % 12 + (match[6] === 'PM' ? 12 : 0)).padStart(2, '0') + match[5]) };
 }
+/** Interpret SCOPE's timezone-free display in the user's browser-local timezone. */
+export function localDeadline(text: string): Date | undefined {
+  const parsed = deadline(text);
+  if (!parsed) return;
+  const [year, month, day] = parsed.date.split('-').map(Number);
+  const time = parsed.key % 10000;
+  const date = new Date(0);
+  date.setFullYear(year, month - 1, day);
+  date.setHours(Math.floor(time / 100), time % 100, 0, 0);
+  return date;
+}
+export function isExpired(text: string, now = new Date()): boolean {
+  const date = localDeadline(text);
+  return date !== undefined && date.getTime() <= now.getTime();
+}
+/** Presentation only: future deadlines within fourteen local calendar days. */
+export function relativeDeadline(text: string, now = new Date()): string | undefined {
+  const date = localDeadline(text);
+  if (!date) return;
+  const remaining = date.getTime() - now.getTime(), limit = new Date(now);
+  limit.setDate(limit.getDate() + 14);
+  if (remaining <= 0 || date > limit) return;
+  return relativeDeadlineTime(text, now);
+}
+/** Relative counterpart for any recognized date, including past/distant values. */
+export function relativeDeadlineTime(text: string, now = new Date()): string | undefined {
+  const date = localDeadline(text); if (!date) return;
+  const difference = date.getTime() - now.getTime(), remaining = Math.abs(difference), sign = difference >= 0 ? 1 : -1;
+  if (difference === 0) return 'due now';
+  if (remaining < 60_000) return sign > 0 ? 'in less than a minute' : 'less than a minute ago';
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'always' });
+  if (remaining >= 86_400_000) return formatter.format(sign * Math.round(remaining / 86_400_000), 'day');
+  if (remaining >= 3_600_000) return formatter.format(sign * Math.round(remaining / 3_600_000), 'hour');
+  return formatter.format(sign * Math.round(remaining / 60_000), 'minute');
+}
 export interface IndexedPosting { posting: Posting; title: string; all: string; deadline?: ReturnType<typeof deadline> }
 export function indexPostings(postings: Posting[]): IndexedPosting[] {
   return postings.map(posting => ({ posting, title: fold(positionTitle(posting)), all: fold([posting.id, positionTitle(posting), posting.organization, posting.division, posting.location].join('\n')), deadline: deadline(posting.deadlineText) }));
 }
 const numericId = (a: string, b: string) => BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : a.localeCompare(b);
-export function selectPostings(index: IndexedPosting[], preferences: Preferences): Posting[] {
+export function selectPostings(index: IndexedPosting[], preferences: Preferences, now = new Date()): Posting[] {
   const required = tokens(preferences.query), excluded = tokens(preferences.exclude);
   const flag = (choice: Flag, value: boolean) => choice === 'all' || (choice === 'yes') === value;
   const matches = index.filter(item => {
     const row = item.posting, text = item[preferences.scope === 'title' ? 'title' : 'all'];
     if (!required.every(term => text.includes(term)) || excluded.some(term => text.includes(term))) return false;
-    for (const [filter, key] of [['organizations', 'organization'], ['locations', 'location'], ['statuses', 'applicationStatus'], ['terms', 'term']] as const) if (preferences[filter].length && !preferences[filter].includes(row[key])) return false;
+    for (const [filter, key] of [['organizations', 'organization'], ['statuses', 'applicationStatus'], ['terms', 'term']] as const) if (preferences[filter].length && !preferences[filter].includes(row[key])) return false;
+    if (preferences.locations.length && !preferences.locations.some(value => value === row.location || (preferences.groupGreaterVancouver && value === greaterVancouverKey && isGreaterVancouver(row.location)))) return false;
     if (!flag(preferences.isNew, row.isNew) || !flag(preferences.shortlisted, row.shortlisted)) return false;
+    if (preferences.hideExpired && isExpired(row.deadlineText, now)) return false;
     if (preferences.unknownDeadline && item.deadline) return false;
     if (preferences.from && (!item.deadline || item.deadline.date < preferences.from)) return false;
     if (preferences.to && (!item.deadline || item.deadline.date > preferences.to)) return false;
@@ -94,6 +141,10 @@ export function selectPostings(index: IndexedPosting[], preferences: Preferences
   });
   const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
   return matches.sort((a, b) => {
+    if (preferences.expiredLast) {
+      const order = Number(isExpired(a.posting.deadlineText, now)) - Number(isExpired(b.posting.deadlineText, now));
+      if (order) return order;
+    }
     const key = preferences.sort;
     const av = key === 'deadlineText' ? a.deadline?.key : key === 'jobTitle' ? positionTitle(a.posting) : a.posting[key];
     const bv = key === 'deadlineText' ? b.deadline?.key : key === 'jobTitle' ? positionTitle(b.posting) : b.posting[key];

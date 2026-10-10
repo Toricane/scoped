@@ -49,6 +49,10 @@ export interface RunState extends Progress {
 }
 
 export type Command =
+  | { type: 'getSaved' }
+  | { type: 'getLibrary' }
+  | { type: 'setApplied'; id: string; applied: boolean }
+  | { type: 'setSaved'; id: string; saved: boolean }
   | { type: 'getState'; tabId: number }
   | { type: 'start'; tabId: number }
   | { type: 'cancel'; tabId: number }

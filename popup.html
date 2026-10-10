@@ -1,30 +1,8 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Scoped — SCOPE exporter</title>
-  </head>
-  <body>
-    <main>
-      <header><img src="/icons/scoped-96.png" width="48" height="48" alt=""><div><h1>Scoped</h1><p>Your search, collected.</p></div></header>
-      <section aria-labelledby="collection-heading">
-        <h2 id="collection-heading">Collect postings</h2>
-        <p id="source-hint">Open your SCOPE search results and click the extension button there.</p>
-        <div class="actions"><button id="start" disabled>Start collection</button><button id="cancel" class="secondary" disabled>Cancel</button></div>
-        <div class="status" role="status" aria-live="polite"><p id="status">Ready.</p><progress id="progress" value="0" max="1"></progress><p id="counts" class="muted">No collection running.</p></div>
-        <p id="error" role="alert" hidden></p>
-      </section>
-      <section aria-labelledby="snapshot-heading">
-        <h2 id="snapshot-heading">Saved snapshot</h2>
-        <p id="snapshot">No snapshot saved yet.</p>
-        <div class="actions"><button id="view">View postings</button></div>
-        <div class="actions"><button id="csv" class="secondary" disabled>Download CSV</button><button id="json" class="secondary" disabled>Download JSON</button></div>
-        <p class="muted">A failed refresh keeps your last successful snapshot.</p>
-      </section>
-      <section id="site-access" aria-label="SCOPE site access"></section>
-      <footer>Keep SCOPE open and leave its search alone while collecting. Collection continues when this popup closes. Everything stays in your browser.</footer>
-    </main>
-    <script type="module" src="/src/popup.ts"></script>
-  </body>
-</html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Scoped — SCOPE exporter</title></head><body><main>
+  <header><img src="/icons/scoped-96.png" width="44" height="44" alt=""><div><h1>Scoped</h1><p>Your opportunities, in one place.</p></div></header>
+  <section class="snapshot-card" aria-labelledby="snapshot-heading"><h2 id="snapshot-heading">Your saved postings</h2><p id="snapshot">No snapshot saved yet.</p><button id="view" class="wide">View postings →</button><button id="view-saved" class="wide secondary saved-launch">Saved postings ↗</button><button id="view-applied" class="wide secondary saved-launch">Applied postings ↗</button><details class="export-options"><summary>Export your collection</summary><div class="actions"><button id="csv" class="secondary" disabled>Download CSV</button><button id="json" class="secondary" disabled>Download JSON</button></div></details></section>
+  <section aria-labelledby="collection-heading"><h2 id="collection-heading">Update from SCOPE</h2><p id="source-hint">Open SCOPE search results to collect postings.</p><div class="actions"><button id="start" disabled>Start collection</button><button id="cancel" class="secondary" disabled>Cancel</button></div><div class="status" role="status" aria-live="polite"><p id="status">Ready.</p><progress id="progress" value="0" max="1"></progress><p id="counts" class="muted">No collection running.</p></div><p id="error" role="alert" hidden></p><p class="muted">Your saved postings are kept if an update fails.</p></section>
+  <details id="access-panel" class="access-panel"><summary>Site access & setup</summary><div id="site-access" aria-label="SCOPE site access"></div></details>
+  <footer>Stored locally · No uploads<br>Collection continues when this popup closes.</footer>
+</main><script type="module" src="/src/popup.ts"></script></body></html>

@@ -1,4 +1,5 @@
 import type { RunState, Snapshot } from './types';
+import { readApplied, appliedKey, readSaved, savedKey } from './saved';
 
 export interface LocalStore {
   get(keys: string[]): Promise<Record<string, unknown>>;
@@ -18,5 +19,12 @@ export async function commitSnapshot(store: LocalStore, run: RunState, snapshot:
   if (snapshot.schemaVersion !== 1 || snapshot.sourceUrl !== run.sourceUrl || snapshot.reportedTotal !== run.total || snapshot.postings.length !== snapshot.reportedTotal || new Set(snapshot.postings.map(row => row.id)).size !== snapshot.reportedTotal) {
     throw new Error('The collected snapshot is incomplete or does not match this run.');
   }
-  await store.set({ snapshot, [runKey(run.tabId)]: { ...run, status: 'complete', collected: snapshot.postings.length, message: 'Collection complete. Your local snapshot is ready to export.' } });
+  const records = await store.get(snapshot.postings.flatMap(row => [savedKey(row.id), appliedKey(row.id)]));
+  const retained = readSaved(records), applied = readApplied(records);
+  const updates: Record<string, unknown> = {};
+  for (const posting of snapshot.postings) {
+    if (retained.has(posting.id)) updates[savedKey(posting.id)] = { ...retained.get(posting.id)!, posting };
+    if (applied.has(posting.id)) updates[appliedKey(posting.id)] = { ...applied.get(posting.id)!, posting };
+  }
+  await store.set({ ...updates, snapshot, [runKey(run.tabId)]: { ...run, status: 'complete', collected: snapshot.postings.length, message: 'Collection complete. Your local snapshot is ready to export.' } });
 }

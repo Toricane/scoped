@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { deadline, defaults, indexPostings, positionTitle, readPreferences, selectPostings, validateSnapshot } from '../src/viewer-model';
+import { relativeDeadlineTime, relativeDeadline, isExpired, deadline, defaults, indexPostings, positionTitle, readPreferences, selectPostings, validateSnapshot } from '../src/viewer-model';
 import { parsePage } from '../src/parser';
 import { SOURCE_URL, type Posting, type Snapshot } from '../src/types';
 import { loadFixture } from './helpers';
@@ -56,6 +56,10 @@ describe('local viewer queries', () => {
   });
 });
 describe('snapshot and preferences compatibility', () => {
+  it('restores validated filter-option orders and defaults older preferences safely', () => {
+    expect(readPreferences({ version: 1 }).facetOrder).toEqual(defaults().facetOrder);
+    expect(readPreferences({ version: 1, facetOrder: { organizations: 'count', locations: 'selected', statuses: 'bad', terms: 'za' } }).facetOrder).toEqual({ organizations: 'count', locations: 'selected', statuses: 'az', terms: 'za' });
+  });
   const snapshot = (): Snapshot => ({ schemaVersion: 1, collectedAt: '2026-10-10T00:00:00Z', sourceUrl: SOURCE_URL, reportedTotal: rows.length, postings: rows });
   it('accepts earlier snapshots with no links and rejects inconsistent or unsafe data', () => {
     rows.forEach(row => { delete row.postingLink; });
@@ -70,4 +74,41 @@ describe('snapshot and preferences compatibility', () => {
     expect(readPreferences({ version: 1, columns: ['unknown', 'location'], pageSize: 999, sort: '__proto__', organizations: ['Old organization', 5], isNew: 'bad' })).toMatchObject({ columns: ['jobTitle', 'location'], pageSize: 50, sort: 'deadlineText', organizations: ['Old organization'], isNew: 'all' });
     expect(readPreferences({ version: 2 })).toEqual(defaults());
   });
+});
+
+it('interprets same-day deadlines in local time, including noon and midnight', () => {
+  expect(isExpired('Oct 10, 2026 09:00 AM', new Date(2026, 9, 10, 8, 59))).toBe(false);
+  expect(isExpired('Oct 10, 2026 09:00 AM', new Date(2026, 9, 10, 9, 0))).toBe(true);
+  expect(isExpired('Oct 10, 2026 12:00 PM', new Date(2026, 9, 10, 11, 59))).toBe(false);
+  expect(isExpired('Oct 10, 2026 12:00 AM', new Date(2026, 9, 10, 0, 0))).toBe(true);
+  expect(isExpired('unknown', new Date())).toBe(false);
+});
+it('deprioritizes expired positions independently of sort direction and supports hiding', () => {
+  rows[0].deadlineText = 'Oct 10, 2026 09:00 AM'; rows[1].deadlineText = 'Oct 11, 2026 09:00 AM';
+  const now = new Date(2026, 9, 10, 10);
+  const result = selectPostings(indexPostings(rows), { ...defaults(), sort: 'id', direction: 'desc' }, now);
+  expect(result.at(-1)!.id).toBe('1001');
+  expect(selectPostings(indexPostings(rows), { ...defaults(), hideExpired: true }, now).some(row => row.id === '1001')).toBe(false);
+  expect(readPreferences({ version: 1 }).expiredLast).toBe(true);
+});
+
+it('formats only future deadlines within two weeks while preserving absolute fallback', () => {
+  const now = new Date(2026, 9, 10, 9);
+  expect(relativeDeadline('Oct 13, 2026 09:00 AM', now)).toBe('in 3 days');
+  expect(relativeDeadline('Oct 10, 2026 11:00 AM', now)).toBe('in 2 hours');
+  expect(relativeDeadline('Oct 10, 2026 09:30 AM', now)).toBe('in 30 minutes');
+  expect(relativeDeadline('Oct 10, 2026 09:01 AM', new Date(2026, 9, 10, 9, 0, 30))).toBe('in less than a minute');
+  expect(relativeDeadline('Oct 24, 2026 09:00 AM', now)).toBe('in 14 days');
+  for (const text of ['Oct 24, 2026 09:01 AM', 'Oct 10, 2026 09:00 AM', 'Oct 9, 2026 09:00 AM', 'unknown']) expect(relativeDeadline(text, now)).toBeUndefined();
+  expect(readPreferences({ version: 1 }).relativeDeadlines).toBe(false);
+  expect(readPreferences({ version: 1, relativeDeadlines: true }).relativeDeadlines).toBe(true);
+});
+
+it('provides relative hover counterparts for past and distant dates without changing display eligibility', () => {
+  const now = new Date(2026, 9, 10, 9);
+  expect(relativeDeadlineTime('Oct 7, 2026 09:00 AM', now)).toBe('3 days ago');
+  expect(relativeDeadlineTime('Oct 30, 2026 09:00 AM', now)).toBe('in 20 days');
+  expect(relativeDeadlineTime('Oct 10, 2026 09:00 AM', now)).toBe('due now');
+  expect(relativeDeadlineTime('unknown', now)).toBeUndefined();
+  expect(relativeDeadline('Oct 30, 2026 09:00 AM', now)).toBeUndefined();
 });
