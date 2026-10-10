@@ -1,0 +1,15 @@
+Scoped offline semantic search
+
+Model: sentence-transformers/all-MiniLM-L6-v2
+ONNX conversion: Xenova/all-MiniLM-L6-v2
+https://huggingface.co/Xenova/all-MiniLM-L6-v2
+Revision: 751bff37182d3f1213fa05d7196b954e230abad9
+License: Apache License 2.0
+https://www.apache.org/licenses/LICENSE-2.0
+Copyright: respective model authors and contributors.
+Build preparation verifies pinned Git blob IDs / model SHA-256.
+
+Transformers.js 3.8.1: Apache License 2.0 (see runtime/TRANSFORMERS-LICENSE.txt).
+ONNX Runtime Web: MIT License (see runtime/ONNX-RUNTIME-LICENSE.txt).
+Weights, tokenizer, runtime JS and WASM are packaged at build time.
+The installed extension never downloads models or sends posting/query text.

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile, stat, readdir } from 'node:fs/promises';
+import { modelFiles, verifyModelFile } from './semantic-assets.mjs';
 
 for (const browser of ['firefox', 'chrome']) {
   const root = new URL(`../dist/${browser}/`, import.meta.url);
@@ -7,6 +8,13 @@ for (const browser of ['firefox', 'chrome']) {
   assert.equal(manifest.manifest_version, 3);
   assert.deepEqual(manifest.permissions, ['activeTab', 'scripting', 'storage', 'downloads']);
   assert.deepEqual(manifest.host_permissions, ['https://scope.sciencecoop.ubc.ca/*']);
+  assert.equal(manifest.content_security_policy.extension_pages, "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self'; connect-src 'self'");
+  for (const file of modelFiles) assert(verifyModelFile(file, await readFile(new URL(`models/minilm/${file.name}`, root))), `Pinned model file invalid: ${file.name}`);
+  for (const file of ['transformers.min.js', 'ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm', 'TRANSFORMERS-LICENSE.txt', 'ONNX-RUNTIME-LICENSE.txt', 'SCOPED-RUNTIME-CHANGES.txt']) assert((await stat(new URL(`runtime/${file}`, root))).size > 0);
+  for (const file of ['transformers.min.js', 'ort-wasm-simd-threaded.jsep.mjs']) assert(!(await readFile(new URL(`runtime/${file}`, root), 'utf8')).includes('Function("return this")'), 'Legacy eval fallback must be absent');
+  assert((await readFile(new URL('runtime/transformers.min.js', root), 'utf8')).includes('import("./ort-wasm-simd-threaded.jsep.mjs")'), 'Factory import must be local/static');
+  await stat(new URL('models/MODEL-LICENSE.txt', root));
+  await stat(new URL('models/SOURCES.txt', root));
   assert(browser === 'firefox' ? manifest.background.scripts?.[0] === 'background.js' && !manifest.background.service_worker : manifest.background.service_worker === 'background.js' && !manifest.background.scripts);
   assert.equal(manifest.action.default_popup, 'popup.html');
   for (const name of ['background.js', 'content.js', 'popup.html', 'viewer.html', 'posting.html']) assert((await stat(new URL(name, root))).size > 0);
@@ -41,6 +49,7 @@ for (const browser of ['firefox', 'chrome']) {
     for (const match of html.matchAll(/(?:src|href)="(\.\/[^"#]+)"/g)) await stat(new URL(match[1], root));
   }
   const assets = await readdir(new URL('assets/', root));
+  assert(assets.some(name => /^semantic-worker-.*\.js$/.test(name)), 'Packaged inference worker is missing');
   assert(assets.some(name => name.endsWith('.css')));
   assert(assets.some(name => name.endsWith('.js')));
   console.log(`${browser}: manifest, bundled scripts, popup/viewer/opener, and icon dimensions validated.`);

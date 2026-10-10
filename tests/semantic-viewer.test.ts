@@ -1,0 +1,60 @@
+import { readFileSync } from 'node:fs';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { defaults, preferencesKey } from '../src/viewer-model';
+import { SOURCE_URL, type Posting } from '../src/types';
+const mocks = vi.hoisted(() => ({ search: vi.fn(), cancel: vi.fn() }));
+vi.mock('../src/semantic-client', () => ({ SemanticSearch: class { search = mocks.search; cancel = mocks.cancel; } }));
+const row = (id: string, title: string, location: string): Posting => ({ id, jobTitle: title, location, organization: 'Example Labs', division: '', deadlineText: '', applications: 0, applicationStatus: '', term: '', isNew: false, shortlisted: false });
+let storageListener: (changes: Record<string, unknown>, area: string) => void;
+let stored: Record<string, unknown>, cleanup: () => void;
+beforeEach(() => {
+  vi.resetModules(); mocks.search.mockReset(); mocks.cancel.mockReset();
+  document.body.innerHTML = new DOMParser().parseFromString(readFileSync('viewer.html', 'utf8'), 'text/html').body.innerHTML;
+  const listeners = vi.spyOn(document, 'addEventListener'); cleanup = () => { for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options); listeners.mockRestore(); };
+  stored = { snapshot: { schemaVersion: 1, sourceUrl: SOURCE_URL, collectedAt: '2026-10-10T00:00:00Z', reportedTotal: 2, postings: [row('1001', 'Backend Engineer', 'Vancouver, BC'), row('1002', 'Designer', 'Montréal, QC')] }, [preferencesKey]: { ...defaults(), query: 'server development', searchMode: 'semantic', sort: 'relevance' } };
+  vi.stubGlobal('chrome', { storage: { local: { get: vi.fn(async () => stored), set: vi.fn(async value => Object.assign(stored, value)) }, onChanged: { addListener: vi.fn(listener => { storageListener = listener; }) } }, runtime: { getURL: (path: string) => 'chrome-extension://scoped/' + path, sendMessage: vi.fn(async () => ({ ok: true, value: {} })) } });
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+const rows = () => document.querySelectorAll('#rows [data-save]');
+it('searches retained Saved records with separate per-view preferences and no snapshot', async () => {
+  vi.stubGlobal('location', { href: 'chrome-extension://scoped/viewer.html?view=saved' });
+  delete stored.snapshot;
+  stored['viewerPreferences:saved:v1'] = { ...defaults(), query: 'server development', searchMode: 'semantic', sort: 'relevance' };
+  chrome.runtime.sendMessage = vi.fn(async () => ({ ok: true, value: { 'saved:1007': { version: 1, savedAt: '2026-10-10T00:00:00Z', posting: row('1007', 'Backend Engineer', 'Vancouver, BC') } } })) as typeof chrome.runtime.sendMessage;
+  mocks.search.mockResolvedValue({ scores: new Map([['1007', 0.8]]), cacheAvailable: true });
+  await import('../src/viewer'); await vi.waitFor(() => expect(rows()).toHaveLength(1));
+  expect((rows()[0] as HTMLElement).dataset.save).toBe('1007'); expect(document.getElementById('rows')!.textContent).toContain('Not in latest search');
+  expect(mocks.search.mock.calls[0][0].map((posting: Posting) => posting.id)).toEqual(['1007']);
+  expect((document.getElementById('searchMode') as HTMLSelectElement).value).toBe('semantic');
+});
+it('renders related matches, keeps exact filters, and switches back to keyword search', async () => {
+  mocks.search.mockResolvedValue({ scores: new Map([['1001', 0.8], ['1002', 0.3]]), cacheAvailable: true });
+  await import('../src/viewer'); await vi.waitFor(() => expect(rows()).toHaveLength(2));
+  expect((rows()[0] as HTMLElement).dataset.save).toBe('1001');
+  const location = document.querySelector<HTMLInputElement>('input[value="Vancouver, BC"]')!; location.checked = true; location.dispatchEvent(new Event('change'));
+  expect(rows()).toHaveLength(1); expect(mocks.search).toHaveBeenCalledOnce();
+  const mode = document.getElementById('searchMode') as HTMLSelectElement; mode.value = 'keyword'; mode.dispatchEvent(new Event('change'));
+  expect(rows()).toHaveLength(0); expect(mocks.cancel).toHaveBeenCalled(); expect(document.getElementById('search-feedback')!.hidden).toBe(true);
+});
+it('shows keyword fallback and supports explicit retry without an automatic retry loop', async () => {
+  mocks.search.mockRejectedValueOnce(new Error('Failed')).mockResolvedValueOnce({ scores: new Map([['1001', 0.8]]), cacheAvailable: false });
+  await import('../src/viewer'); await vi.waitFor(() => expect(document.getElementById('semantic-retry')!.hidden).toBe(false));
+  expect(rows()).toHaveLength(0); expect(mocks.search).toHaveBeenCalledOnce();
+  document.getElementById('semantic-retry')!.click(); await vi.waitFor(() => expect(rows()).toHaveLength(1));
+  expect(document.getElementById('search-status')!.textContent).toContain('Persistent cache unavailable');
+});
+it('rejects stale query and snapshot responses, including before the debounce finishes', async () => {
+  const replies: ((value: unknown) => void)[] = [];
+  mocks.search.mockImplementation(() => new Promise(resolve => replies.push(resolve)));
+  await import('../src/viewer'); await vi.waitFor(() => expect(replies).toHaveLength(1));
+  const query = document.getElementById('query') as HTMLInputElement; query.value = 'design'; query.dispatchEvent(new Event('input'));
+  replies[0]({ scores: new Map([['1001', 0.9]]), cacheAvailable: true }); await Promise.resolve(); await Promise.resolve();
+  expect(rows()).toHaveLength(0);
+  await vi.waitFor(() => expect(replies).toHaveLength(2));
+  stored.snapshot = { ...(stored.snapshot as object), postings: [row('1003', 'Product Designer', 'Vancouver, BC')], reportedTotal: 1 };
+  storageListener({ snapshot: {} }, 'local'); await vi.waitFor(() => expect(replies).toHaveLength(3));
+  replies[1]({ scores: new Map([['1002', 0.9]]), cacheAvailable: true }); await Promise.resolve();
+  expect(document.querySelector('#rows [data-save="1002"]')).toBeNull();
+  replies[2]({ scores: new Map([['1003', 0.9]]), cacheAvailable: true }); await vi.waitFor(() => expect(rows()).toHaveLength(1));
+  expect((rows()[0] as HTMLElement).dataset.save).toBe('1003');
+});

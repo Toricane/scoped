@@ -5,6 +5,7 @@ import { readRemovedSaved, removedSavedPrefix, readApplied, appliedPostings, app
 import type { LocationExplorer } from './globe';
 import { columnLabels, defaults, fold, indexPostings, isExpired, positionTitle, relativeDeadline, relativeDeadlineTime, preferencesKey, readPreferences, selectPostings, validateSnapshot, type Column, type FacetOrder, type IndexedPosting, type Preferences } from './viewer-model';
 import './viewer.css';
+import type { SemanticSearch } from './semantic-client';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const result = document.createElement(tag); if (text !== undefined) result.textContent = text; return result; };
@@ -18,6 +19,49 @@ function icon(kind: 'star' | 'check' | 'more' | 'external'): SVGSVGElement {
 let preferences = defaults(), snapshot: Snapshot | undefined, index: IndexedPosting[] = [], page = 1, matches: Posting[] = [];
 let loadRevision = 0, timer: ReturnType<typeof setTimeout> | undefined, writeQueue: Promise<unknown> = Promise.resolve();
 let preferencesLoaded = false;
+let semantic: SemanticSearch | undefined, semanticKey = '', semanticRevision = 0, semanticScores: Map<string, number> | undefined;
+let semanticState: 'idle' | 'loading' | 'ready' | 'error' = 'idle', semanticMessage = '';
+let libraryRevision = 0;
+function semanticFeedback(): void {
+  const enabled = preferences.searchMode === 'semantic';
+  element('search-feedback').hidden = !enabled;
+  element('search-status').textContent = semanticMessage || 'Related matches ranked locally. Use filters for exact locations and deadlines.';
+  element('semantic-retry').hidden = semanticState !== 'error';
+  element('query').setAttribute('aria-busy', String(semanticState === 'loading'));
+  element('search-help').textContent = enabled
+    ? 'Find related roles using saved titles, organizations, divisions and locations. Dates and locations in a sentence are not automatic filters: use Refine results. Exclusions remain literal. No data leaves your browser.'
+    : 'Every word must match. Use quotes for an exact phrase. Exclusions remove any match. Searches use saved table text.';
+  const option = element<HTMLSelectElement>('sort').querySelector<HTMLOptionElement>('[value="relevance"]');
+  if (option) { option.hidden = !enabled; option.disabled = !enabled; }
+}
+function prepareSemantic(): void {
+  const query = preferences.query.trim();
+  if (preferences.searchMode !== 'semantic' || !query || !index.length) {
+    if (semanticKey || semanticState !== 'idle') { semanticRevision++; semantic?.cancel(); semanticKey = ''; }
+    semanticScores = undefined; semanticState = 'idle'; semanticMessage = ''; semanticFeedback(); return;
+  }
+  const key = JSON.stringify([libraryRevision, preferences.scope, query]);
+  if (key === semanticKey) { semanticFeedback(); return; }
+  semanticKey = key; const revision = ++semanticRevision;
+  semanticScores = undefined; semanticState = 'loading'; semanticMessage = 'Preparing local semantic search… Keyword results are shown while it loads.'; semanticFeedback();
+  const scope = preferences.scope, postings = libraryPostings;
+  void import('./semantic-client').then(async ({ SemanticSearch }) => {
+    if (revision !== semanticRevision) return;
+    semantic ??= new SemanticSearch();
+    const result = await semantic.search(postings, scope, query, message => {
+      if (revision !== semanticRevision) return;
+      semanticMessage = `${message}. Keyword results are shown while it loads.`; semanticFeedback();
+    });
+    if (revision !== semanticRevision) return;
+    semanticScores = result.scores; semanticState = 'ready';
+    semanticMessage = `Related matches ranked locally${result.cacheAvailable ? '' : ' · Persistent cache unavailable; this tab uses memory'}. Use filters for exact locations and deadlines.`;
+    page = 1; render();
+  }).catch(() => {
+    if (revision !== semanticRevision) return;
+    semanticState = 'error'; semanticScores = undefined;
+    semanticMessage = 'Semantic search is unavailable. Keyword results are shown. Reload the extension after rebuilding, or retry.'; render();
+  });
+}
 const expanded = new Set<string>();
 const savedMode = new URL(location.href).searchParams.get('view') === 'saved';
 const appliedMode = new URL(location.href).searchParams.get('view') === 'applied';
@@ -30,6 +74,7 @@ const markingApplied = new Set<string>();
 function rebuildLibrary(): void {
   libraryPostings = savedMode ? savedPostings(saved, snapshot, applied, removedSaved) : appliedMode ? appliedPostings(applied, snapshot) : snapshot?.postings ?? [];
   index = indexPostings(libraryPostings);
+  libraryRevision++;
 }
 let saved = new Map<string, SavedPosting>(), libraryPostings: Posting[] = [];
 let globe: LocationExplorer | undefined, globeLoading = false, mapView = false;
@@ -110,7 +155,7 @@ function save(): void {
 }
 function changed(): void { page = 1; save(); render(); }
 function fillControls(): void {
-  for (const id of ['query', 'exclude', 'scope', 'isNew', 'shortlisted', 'from', 'to', 'min', 'max', 'sort', 'direction', 'pageSize'] as const) element<HTMLInputElement | HTMLSelectElement>(id).value = String(preferences[id]);
+  for (const id of ['query', 'exclude', 'scope', 'searchMode', 'isNew', 'shortlisted', 'from', 'to', 'min', 'max', 'sort', 'direction', 'pageSize'] as const) element<HTMLInputElement | HTMLSelectElement>(id).value = String(preferences[id]);
   for (const id of ['unknownDeadline', 'hideExpired', 'expiredLast', 'relativeDeadlines'] as const) element<HTMLInputElement>(id).checked = preferences[id];
   document.querySelectorAll<HTMLInputElement>('#column-options input').forEach(input => { input.checked = preferences.columns.includes(input.value as Column); });
 }
@@ -209,7 +254,8 @@ function render(): void {
   const focusedIndex = active?.closest('tr') ? [...element('rows').children].filter(row => !row.classList.contains('expanded')).indexOf(active.closest('tr')!) : 0;
   const focusedSort = active?.dataset.sort;
   const focusedMenu = active?.dataset.rowActions;
-  matches = selectPostings(index, preferences);
+  prepareSemantic();
+  matches = selectPostings(index, preferences, new Date(), semanticScores);
   const searchOptions = Number(preferences.scope === 'title') + Number(Boolean(preferences.exclude));
   document.querySelector('.search-options summary')!.textContent = searchOptions ? `Search options · ${searchOptions}` : 'Search options';
   const pages = Math.max(1, Math.ceil(matches.length / preferences.pageSize)); page = Math.min(page, pages);
@@ -345,16 +391,18 @@ element('undo-saved').addEventListener('click', async () => {
   } catch (value) { error(value); if (lastRemoval === removal) { undo.disabled = false; undo.focus(); } }
 });
 function reset(): void {
-  const { sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines } = preferences;
-  preferences = { ...defaults(), sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines }; fillControls(); makeFacets(true); changed();
+  const { sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode } = preferences;
+  preferences = { ...defaults(), sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode }; fillControls(); makeFacets(true); changed();
 }
+const relevanceOption = node('option', 'Relevance'); relevanceOption.value = 'relevance'; element('sort').append(relevanceOption);
+element('semantic-retry').addEventListener('click', () => { semanticKey = ''; changed(); });
 for (const [key, label] of Object.entries(columnLabels)) {
   const option = node('option', label); option.value = key; element('sort').append(option);
   const check = node('input'); check.type = 'checkbox'; check.value = key; check.disabled = key === 'jobTitle';
   const labelNode = node('label'); labelNode.className = 'check'; labelNode.append(check, node('span', label)); element('column-options').append(labelNode);
   check.addEventListener('change', () => { preferences.columns = check.checked ? [...preferences.columns, key as Column] : preferences.columns.filter(column => column !== key); changed(); });
 }
-for (const id of ['query', 'exclude', 'scope', 'isNew', 'shortlisted', 'from', 'to', 'min', 'max', 'sort', 'direction', 'pageSize', 'unknownDeadline', 'hideExpired', 'expiredLast', 'relativeDeadlines'] as const) {
+for (const id of ['query', 'exclude', 'scope', 'searchMode', 'isNew', 'shortlisted', 'from', 'to', 'min', 'max', 'sort', 'direction', 'pageSize', 'unknownDeadline', 'hideExpired', 'expiredLast', 'relativeDeadlines'] as const) {
   const control = element<HTMLInputElement | HTMLSelectElement>(id);
   control.addEventListener(id === 'query' || id === 'exclude' ? 'input' : 'change', () => {
     preferencesLoaded = true;
@@ -364,9 +412,17 @@ for (const id of ['query', 'exclude', 'scope', 'isNew', 'shortlisted', 'from', '
       if (control.value && (!Number.isSafeInteger(Number(control.value)) || Number(control.value) < 0)) { error('Application counts must be whole numbers of zero or more.'); return; }
       preferences[id] = control.value;
     } else Object.assign(preferences, { [id]: control.value });
+    if (id === 'searchMode') {
+      if (preferences.searchMode === 'semantic') { preferences.sort = 'relevance'; preferences.direction = 'asc'; }
+      else if (preferences.sort === 'relevance') preferences.sort = 'deadlineText';
+      fillControls();
+    }
     error();
     if (timer) clearTimeout(timer);
-    if (id === 'query' || id === 'exclude') timer = setTimeout(changed, 60); else changed();
+    if (id === 'query' || id === 'exclude') {
+      if (id === 'query') { semanticRevision++; semanticKey = ''; semanticScores = undefined; }
+      timer = setTimeout(changed, preferences.searchMode === 'semantic' ? 300 : 60);
+    } else changed();
   });
 }
 element('previous').addEventListener('click', () => { page--; render(); }); element('next').addEventListener('click', () => { page++; render(); }); element('reset').addEventListener('click', reset);
@@ -402,7 +458,7 @@ async function load(initial = false): Promise<void> {
     element('snapshot-info').textContent = savedMode ? `${saved.size} Saved postings · Local to Scoped, independent of SCOPE` : snapshot ? `${snapshot.postings.length.toLocaleString()} postings · Collected ${new Date(snapshot.collectedAt).toLocaleString()}` : 'Your saved SCOPE search, ready to explore.';
     element('update').hidden = initial || !snapshot;
     error(collectionError); makeFacets(); render();
-  } catch (value) { if (revision === loadRevision) { snapshot = undefined; libraryPostings = []; index = []; render(); error(value); } }
+  } catch (value) { if (revision === loadRevision) { snapshot = undefined; libraryPostings = []; index = []; libraryRevision++; render(); error(value); } }
 }
 fillControls();
 // Register after starting the initial read. A newer event invalidates that read.

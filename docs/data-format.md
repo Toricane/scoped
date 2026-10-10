@@ -4,6 +4,8 @@ The authoritative TypeScript contract is `src/types.ts`; serialization is in `sr
 
 ## Snapshot JSON
 
+Semantic search adds no fields to the snapshot or exports. Its disposable IndexedDB vectors are keyed by model/text version and input hash, separate from snapshot/library storage. Version-1 viewer preferences optionally include searchMode (keyword by default; semantic opt-in) and sort=relevance for semantic mode. Existing preferences retain their defaults. See [semantic search](semantic-search.md).
+
 Schema version 1 is an object with:
 
 - `schemaVersion`: number `1`.

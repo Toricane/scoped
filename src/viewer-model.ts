@@ -6,11 +6,11 @@ export type Column = keyof typeof columnLabels;
 export const defaultColumns: Column[] = ['jobTitle', 'organization', 'location', 'deadlineText', 'applications'];
 type Flag = 'all' | 'yes' | 'no';
 export interface Preferences {
-  version: 1; query: string; exclude: string; scope: 'all' | 'title';
+  version: 1; query: string; exclude: string; scope: 'all' | 'title'; searchMode: 'keyword' | 'semantic';
   groupGreaterVancouver: boolean; organizations: string[]; locations: string[]; statuses: string[]; terms: string[];
   facetOrder: Record<'organizations' | 'locations' | 'statuses' | 'terms', FacetOrder>;
   isNew: Flag; shortlisted: Flag; from: string; to: string; unknownDeadline: boolean; hideExpired: boolean; expiredLast: boolean; relativeDeadlines: boolean;
-  min: string; max: string; sort: Column; direction: 'asc' | 'desc'; pageSize: 25 | 50 | 100; columns: Column[];
+  min: string; max: string; sort: Column | 'relevance'; direction: 'asc' | 'desc'; pageSize: 25 | 50 | 100; columns: Column[];
 }
 export const preferencesKey = 'viewerPreferences:v1';
 export type FacetOrder = 'az' | 'za' | 'count' | 'selected';
@@ -19,7 +19,7 @@ export function positionTitle(posting: Posting): string {
   return posting.jobTitle.replace(new RegExp(`\\s+${posting.id}[A-Za-z]*(?=\\s+E\\d+\\s*$|\\s*$)`), '').trim() || posting.jobTitle;
 }
 export function defaults(): Preferences {
-  return { version: 1, query: '', exclude: '', scope: 'all', groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 50, columns: [...defaultColumns] };
+  return { version: 1, query: '', exclude: '', scope: 'all', searchMode: 'keyword', groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 50, columns: [...defaultColumns] };
 }
 export function readPreferences(value: unknown): Preferences {
   const result = defaults();
@@ -35,8 +35,10 @@ export function readPreferences(value: unknown): Preferences {
   for (const key of ['organizations', 'locations', 'statuses', 'terms'] as const) if (Array.isArray(stored[key])) result[key] = [...new Set((stored[key] as unknown[]).filter((entry): entry is string => typeof entry === 'string'))];
   for (const key of ['isNew', 'shortlisted'] as const) if (['all', 'yes', 'no'].includes(String(stored[key]))) result[key] = stored[key] as Flag;
   if (stored.scope === 'title') result.scope = 'title';
+  if (stored.searchMode === 'semantic') result.searchMode = 'semantic';
   if (stored.direction === 'desc') result.direction = 'desc';
   if (typeof stored.sort === 'string' && Object.hasOwn(columnLabels, stored.sort)) result.sort = stored.sort as Column;
+  if (stored.sort === 'relevance' && result.searchMode === 'semantic') result.sort = 'relevance';
   if ([25, 50, 100].includes(Number(stored.pageSize))) result.pageSize = stored.pageSize as Preferences['pageSize'];
   for (const key of ['hideExpired', 'expiredLast', 'groupGreaterVancouver', 'relativeDeadlines'] as const) if (typeof stored[key] === 'boolean') result[key] = stored[key];
   if (stored.unknownDeadline === true) result.unknownDeadline = true;
@@ -122,12 +124,13 @@ export function indexPostings(postings: Posting[]): IndexedPosting[] {
   return postings.map(posting => ({ posting, title: fold(positionTitle(posting)), all: fold([posting.id, positionTitle(posting), posting.organization, posting.division, posting.location].join('\n')), deadline: deadline(posting.deadlineText) }));
 }
 const numericId = (a: string, b: string) => BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : a.localeCompare(b);
-export function selectPostings(index: IndexedPosting[], preferences: Preferences, now = new Date()): Posting[] {
+export function selectPostings(index: IndexedPosting[], preferences: Preferences, now = new Date(), scores?: ReadonlyMap<string, number>): Posting[] {
   const required = tokens(preferences.query), excluded = tokens(preferences.exclude);
   const flag = (choice: Flag, value: boolean) => choice === 'all' || (choice === 'yes') === value;
   const matches = index.filter(item => {
     const row = item.posting, text = item[preferences.scope === 'title' ? 'title' : 'all'];
-    if (!required.every(term => text.includes(term)) || excluded.some(term => text.includes(term))) return false;
+    if (scores ? !scores.has(row.id) : !required.every(term => text.includes(term))) return false;
+    if (excluded.some(term => text.includes(term))) return false;
     for (const [filter, key] of [['organizations', 'organization'], ['statuses', 'applicationStatus'], ['terms', 'term']] as const) if (preferences[filter].length && !preferences[filter].includes(row[key])) return false;
     if (preferences.locations.length && !preferences.locations.some(value => value === row.location || (preferences.groupGreaterVancouver && value === greaterVancouverKey && isGreaterVancouver(row.location)))) return false;
     if (!flag(preferences.isNew, row.isNew) || !flag(preferences.shortlisted, row.shortlisted)) return false;
@@ -145,7 +148,10 @@ export function selectPostings(index: IndexedPosting[], preferences: Preferences
       const order = Number(isExpired(a.posting.deadlineText, now)) - Number(isExpired(b.posting.deadlineText, now));
       if (order) return order;
     }
-    const key = preferences.sort;
+    if (preferences.sort === 'relevance' && scores) {
+      return (scores.get(b.posting.id)! - scores.get(a.posting.id)!) * (preferences.direction === 'asc' ? 1 : -1) || -numericId(a.posting.id, b.posting.id);
+    }
+    const key = preferences.sort === 'relevance' ? 'deadlineText' : preferences.sort;
     const av = key === 'deadlineText' ? a.deadline?.key : key === 'jobTitle' ? positionTitle(a.posting) : a.posting[key];
     const bv = key === 'deadlineText' ? b.deadline?.key : key === 'jobTitle' ? positionTitle(b.posting) : b.posting[key];
     const emptyA = av === undefined || av === '', emptyB = bv === undefined || bv === '';

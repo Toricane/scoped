@@ -6,6 +6,7 @@
 - [Data format](data-format.md): exported fields, JSON/CSV conventions, local storage, and compatibility.
 - [Acceptance status](acceptance.md): current evidence and live browser checklist.
 - [Globe and geography](geography.md): offline location matching, controls, data sources, and limits.
+- [Semantic search](semantic-search.md): local model, ranking, exact constraints, packaging, cache, and verification.
 - [Feature roadmap](features-roadmap.md): proposed next features for fast review and better decisions.
 
 ## Developing Scoped

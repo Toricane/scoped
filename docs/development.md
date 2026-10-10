@@ -74,6 +74,8 @@ Keep the source CSV ignored and unchanged. Do not commit account markup, session
 
 ## Technical references
 
+Optional semantic search lives in src/semantic-model.ts (text/cosine/contracts), src/semantic-engine.ts (incremental inference/ranking), src/semantic-cache.ts (disposable IndexedDB), src/semantic-worker.ts (local-only model/runtime configuration), and src/semantic-client.ts (worker lifecycle/revisions). Viewer loading is lazy and preserves keyword fallback, exact filters and stale-response protection. scripts/semantic-assets.mjs prepares pinned model/runtime assets before build; npm run setup:search can prepare them separately. Worker imports resolve to the packaged self-contained Transformers runtime; no duplicate WASM bundle is emitted. See [semantic-search contract](semantic-search.md).
+
 [Agent invariants](../AGENTS.md), [DOM adapter evidence](scope-page-structure.md), [data contract](data-format.md), and [browser acceptance](acceptance.md) are current references. [Historical notes](history/acceptance-history.md) explain abandoned approaches but are not implementation requirements.
 
 ## Interface conventions

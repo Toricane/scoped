@@ -1,10 +1,12 @@
 # Browser acceptance and verification
 
-Current implementation: **0.5.5**. Last documentation review: **October 10, 2026**. This is the current checklist; [historical records](history/acceptance-history.md) preserve earlier versions and abandoned approaches.
+Current implementation: **0.6.0**. Last documentation review: **October 10, 2026**. This is the current checklist; [historical records](history/acceptance-history.md) preserve earlier versions and abandoned approaches.
 
 Automated tests, saved markup, and local previews do not establish live signed-in compatibility. User reports confirm the described workflow, not every edge case below.
 
 ## Recorded evidence
+
+- **Offline semantic search — local/automated October 10, 2026, 0.6.0:** tests cover stable text hashes, title-only scope, cached/changed inputs, malformed vectors, IndexedDB persistence/pruning/fallback, numeric ID lookup, relevance with exact filters/exclusions/expiry, old preference defaults, query/snapshot revisions, cancellation and failure/retry. Both built packages verify pinned model integrity, runtime/licenses, self-only connections/workers and WASM CSP. An isolated headless Edge extension profile with four synthetic postings recalled Backend Software Engineer for “server development”, ranked Server Infrastructure Developer first, preserved exact Vancouver filtering, reused persistent vectors after reload, and excluded weak designer overlap for “backend engineer”. External HTTP(S) requests were blocked and none were attempted. Initial four-row search took about 3.5 seconds on this machine; a later query took about 1.4 seconds including input debounce/test waiting. These are small synthetic measurements, not performance guarantees for a full collection. The 390×844 preview had document width 390 and visible pagination. Firefox/Zen runtime acceptance, actual Chrome browser acceptance and representative relevance/memory/large-library measurements remain pending.
 
 - **Filter hierarchy and status cues — local/automated October 10, 2026:** 134 tests pass, including title status badges and explicitly selected status-column preservation. Synthetic Edge previews cover eight viewport sizes, revised sidebar disclosures, five-column status-badge presentation, stable row menus, focus flows and narrow cards. Desktop sampled rows remain 39px; pagination stays within the 320×568 viewport. Touch hardware, 200% zoom, RTL and live Firefox/Chrome behavior remain pending.
 
@@ -145,3 +147,13 @@ Final 0.5.5 automated checks: **125 tests pass**, TypeScript/build and Firefox/C
 ## Generated geography build workflow
 
 Geography JSON and .cache/ are now ignored. Build prepares missing assets at build time; cached packages remain offline at runtime. **127 tests pass across 15 files**, with TypeScript/build and both package validations passing. Synthetic setup tests exercise first download/generation, no-network output reuse, regeneration from SHA-verified raw cache, corrupt-cache rejection, and failed refresh preserving the previous index. The real local build reused existing assets without downloading. A fresh real GeoNames download under this new workflow has not been exercised; external availability/data changes remain a build-time dependency. No files were staged or committed.
+
+## Semantic search live checklist (0.6.0)
+
+Final 0.6.0 verification: **151 tests pass across 20 files**, clean npm ci, TypeScript/build and both package validations pass. Official Mozilla lint reports zero errors, warnings or notices. The final isolated Edge extension run again passed offline inference/cache/filtering checks with zero external requests; initial four-row search took about 1.4 seconds on that run (earlier runs about 3.5 seconds). These synthetic measurements do not establish full-collection performance or signed-in browser acceptance.
+
+- Reload the rebuilt extension and reopen the viewer. Select Semantic · local and search a related role phrase; confirm loading feedback, usable keyword fallback and Relevance sorting.
+- Repeat while offline and after reopening the viewer; confirm model loading is local and changed captured title/organization/location fields update results without recollection for unchanged rows.
+- Check title-only scope, literal exclusions, numeric IDs, exact facets/deadlines/counts, expired-last/hide-expired, and globe consistency before pagination. Natural-language dates/locations are not automatic constraints.
+- Rapidly edit/clear the query, switch mode/scope, refresh successfully and use separate Saved/Applied views with retained rows; confirm old responses cannot replace current results.
+- Exercise unavailable/corrupt cache and model-start failure; confirm keyword fallback, clear feedback and explicit Retry, with no automatic loop or loss of snapshots/libraries.

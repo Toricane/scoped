@@ -7,3 +7,6 @@ coverage/
 # Generated offline geography; keep scripts and attribution, not data blobs.
 .cache/
 public/maps/*.json
+public/models/minilm/
+public/models/MODEL-LICENSE.txt
+public/runtime/
