@@ -62,7 +62,9 @@ The popup can open the viewer and export an existing snapshot from another websi
 
 The viewer opens in a separate extension tab using your latest complete snapshot; no CSV import is required. It works without an open SCOPE tab.
 
-The compact header groups the collection tabs, List/Globe switch, and export menu beside the brand. These controls wrap in smaller windows.
+The compact header groups the collection tabs, List/Globe switch, and export menu beside the brand. These controls wrap in smaller windows. All/Saved/Applied switch in the current tab; Ctrl/Cmd-click or middle-click opens a separate tab.
+
+Organization and location filters appear first. **How filters work**, **Included cities**, and **Deadline display** hold supporting explanations and display preferences. New default views show **New** and **SCOPE shortlist** badges beside titles; dedicated status columns remain available through **Columns**, and existing column selections are preserved.
 
 - Search title, organization, division, location, and ID, or titles only. All search words must match. Quotes keep a phrase together; any excluded word/phrase removes a result. Matching ignores case and accents.
 - Open **Search options** to choose titles only or enter exclusions. Each filter group has an **Options order** control: Name A–Z, Name Z–A, Most postings, or Selected first. Counts describe the entire saved collection; ordering is remembered separately from result sorting.
@@ -76,7 +78,7 @@ The compact header groups the collection tabs, List/Globe switch, and export men
 
 ## Saved, Applied, and deadlines
 
-**Save** retains a position locally. **Saved** opens a separate tab with local saves and positions shortlisted in the latest captured SCOPE search, deduplicated by ID. SCOPE entries show a source label. **Remove from Saved** removes either kind of entry and keeps it removed after refresh, without changing SCOPE. A notification offers **Undo** for five minutes, including for retained positions absent from the latest collection. Undo retains a local copy. You can also restore a current position with **Save** in All postings. Explicit local saves retain a copy across collections; automatic SCOPE entries follow the latest captured shortlist.
+**Save** retains a position locally. **Saved** switches the current viewer to local saves and positions shortlisted in the latest captured SCOPE search, deduplicated by ID. SCOPE entries show a source label. **Remove from Saved** removes either kind of entry and keeps it removed after refresh, without changing SCOPE. A notification offers **Undo** for five minutes, including for retained positions absent from the latest collection. Undo retains a local copy. You can also restore a current position with **Save** in All postings. Explicit local saves retain a copy across collections; automatic SCOPE entries follow the latest captured shortlist.
 
 After submitting an application, click **Mark applied**. It moves the position out of Saved into the separate **Applied** tab. **Applied · Undo** removes the mark and returns it to Saved if it is locally saved or in the captured SCOPE shortlist and has not been removed locally. These actions stay local to Scoped; they never submit an application or change SCOPE. The popup opens both libraries directly. Each view remembers its own filters.
 

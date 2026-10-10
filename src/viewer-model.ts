@@ -3,7 +3,7 @@ import { isSourceUrl, type Posting, type Snapshot } from './types';
 
 export const columnLabels = { jobTitle: 'Job title', organization: 'Organization', location: 'Location', deadlineText: 'Deadline', applications: 'Applications', isNew: 'New on SCOPE', shortlisted: 'SCOPE shortlist', id: 'ID', term: 'Term', division: 'Division', applicationStatus: 'Application status' };
 export type Column = keyof typeof columnLabels;
-export const defaultColumns: Column[] = ['jobTitle', 'organization', 'location', 'deadlineText', 'applications', 'isNew'];
+export const defaultColumns: Column[] = ['jobTitle', 'organization', 'location', 'deadlineText', 'applications'];
 type Flag = 'all' | 'yes' | 'no';
 export interface Preferences {
   version: 1; query: string; exclude: string; scope: 'all' | 'title';

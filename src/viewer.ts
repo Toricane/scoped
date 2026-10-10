@@ -8,6 +8,13 @@ import './viewer.css';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const result = document.createElement(tag); if (text !== undefined) result.textContent = text; return result; };
+function icon(kind: 'star' | 'check' | 'more' | 'external'): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false'); svg.classList.add('ui-icon');
+  const path = document.createElementNS(svg.namespaceURI, 'path');
+  const paths = { star: 'm12 3 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3L3 9.6l6.2-.9Z', check: 'm5 12 4 4L19 6', more: 'M4 12h.01M12 12h.01M20 12h.01', external: 'M14 4h6v6M20 4l-9 9M10 4H4v16h16v-6' };
+  path.setAttribute('d', paths[kind]); svg.append(path); return svg;
+}
 let preferences = defaults(), snapshot: Snapshot | undefined, index: IndexedPosting[] = [], page = 1, matches: Posting[] = [];
 let loadRevision = 0, timer: ReturnType<typeof setTimeout> | undefined, writeQueue: Promise<unknown> = Promise.resolve();
 let preferencesLoaded = false;
@@ -90,7 +97,7 @@ element<HTMLAnchorElement>('all-tab').href = api.runtime.getURL('viewer.html');
 element<HTMLAnchorElement>('applied-tab').href = api.runtime.getURL('viewer.html?view=applied');
 element(appliedMode ? 'applied-tab' : savedMode ? 'saved-tab' : 'all-tab').setAttribute('aria-current', 'page');
 if (libraryMode) {
-  element<HTMLAnchorElement>(appliedMode ? 'applied-tab' : 'saved-tab').target = '_self'; document.title = appliedMode ? 'Scoped — Applied postings' : 'Scoped — Saved postings';
+  document.title = appliedMode ? 'Scoped — Applied postings' : 'Scoped — Saved postings';
   document.querySelector('.export-menu summary')!.textContent = 'Export SCOPE collection ↓';
   document.querySelector('.export-menu .help')!.textContent = 'Exports contain the full latest SCOPE collection, not local Saved or Applied records.';
 }
@@ -159,7 +166,7 @@ function makeFacets(clearSearch = false): void {
       label.append(checkbox, node('span', 'Group Greater Vancouver'));
       const help = node('p', `${greaterVancouverCities.join(', ')}. Grouping a selected city includes all six.`); help.className = 'help';
       checkbox.addEventListener('change', () => { preferencesLoaded = true; preferences.groupGreaterVancouver = checkbox.checked; preferences.locations = regroupSelections(preferences.locations, checkbox.checked, libraryPostings.map(row => row.location)); makeFacets(); changed(); element('groupGreaterVancouver')?.focus(); });
-      group.append(label, help);
+      const info = node('details'); info.className = 'filter-help'; info.append(node('summary', 'Included cities'), help); group.append(label, info);
     }
     group.append(search, orderLabel, options); element(parent).append(group); draw();
   }
@@ -254,9 +261,14 @@ function render(): void {
       td.dataset.label = columnLabels[key];
       if (key === 'isNew' || key === 'shortlisted') { if (row[key]) { const badge = node('span', key === 'isNew' ? 'New' : 'Shortlisted'); badge.className = 'badge'; td.append(badge); } else td.textContent = '—'; }
       else if (key === 'jobTitle') {
-        const link = node('a', positionTitle(row)); link.href = api.runtime.getURL(`posting.html?id=${encodeURIComponent(row.id)}`); link.target = '_blank'; link.rel = 'noopener'; link.setAttribute('aria-label', `Open ${positionTitle(row)} in a new tab`); td.append(link);
+        const link = node('a', positionTitle(row)); link.href = api.runtime.getURL(`posting.html?id=${encodeURIComponent(row.id)}`); link.target = '_blank'; link.rel = 'noopener'; link.setAttribute('aria-label', `Open ${positionTitle(row)} in a new tab`); link.append(icon('external')); td.append(link);
+        const flags = node('span'); flags.className = 'posting-flags';
+        for (const [flag, label] of [['isNew', 'New'], ['shortlisted', 'SCOPE shortlist']] as const) {
+          if (row[flag] && !preferences.columns.includes(flag)) { const badge = node('span', label); badge.className = 'badge'; flags.append(badge); }
+        }
+        if (flags.childElementCount) td.append(flags);
         if (isExpired(row.deadlineText)) { const badge = node('span', 'Expired'); badge.className = 'retained-label'; td.append(badge); }
-        if (row.shortlisted && savedMode) { const badge = node('span', 'SCOPE shortlist'); badge.className = 'retained-label'; td.append(badge); }
+        if (row.shortlisted && savedMode && preferences.columns.includes('shortlisted')) { const badge = node('span', 'SCOPE shortlist'); badge.className = 'retained-label'; td.append(badge); }
         if (libraryMode && !snapshot?.postings.some(current => current.id === row.id)) { const label = node('span', 'Not in latest search'); label.className = 'retained-label'; label.title = 'Retained when saved. This does not establish whether the posting is still available.'; td.append(label); }
       } else if (key === 'deadlineText') {
         const relative = preferences.relativeDeadlines ? relativeDeadline(row.deadlineText) : undefined; td.textContent = relative ?? (row.deadlineText || '—');
@@ -264,7 +276,8 @@ function render(): void {
       } else td.textContent = display(row, key) || '—';
       tr.append(td);
     }
-    const saveButton = node('button', isSaved(row) ? savedMode ? 'Remove' : '✓ Saved' : '☆ Save'); saveButton.className = isSaved(row) ? 'save-posting is-saved' : 'save-posting secondary'; saveButton.dataset.save = row.id; saveButton.disabled = saving.has(row.id); saveButton.title = isSaved(row) ? 'Remove from Saved' : 'Save locally'; saveButton.setAttribute('aria-pressed', String(isSaved(row))); saveButton.setAttribute('aria-label', `${isSaved(row) ? 'Remove from Saved:' : 'Save'} ${positionTitle(row)} locally`);
+    const saveButton = node('button', isSaved(row) ? savedMode ? 'Remove' : 'Saved' : 'Save'); saveButton.className = isSaved(row) ? 'save-posting is-saved' : 'save-posting secondary'; saveButton.dataset.save = row.id; saveButton.disabled = saving.has(row.id); saveButton.title = isSaved(row) ? 'Remove from Saved' : 'Save locally'; saveButton.setAttribute('aria-pressed', String(isSaved(row))); saveButton.setAttribute('aria-label', `${isSaved(row) ? 'Remove from Saved:' : 'Save'} ${positionTitle(row)} locally`);
+    saveButton.prepend(icon(isSaved(row) ? 'check' : 'star'));
     saveButton.addEventListener('click', () => void toggleSaved(row));
     const titleCell = tr.querySelector<HTMLTableCellElement>('[data-column="jobTitle"]')!;
     const titleText = node('div'); titleText.className = 'posting-title'; titleText.append(...titleCell.childNodes);

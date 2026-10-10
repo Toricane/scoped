@@ -38,6 +38,21 @@ const rows = () => document.querySelectorAll('#rows tr:not(.expanded)');
 async function open(): Promise<void> { await import('../src/viewer'); await vi.waitFor(() => expect(document.getElementById('snapshot-info')!.textContent).not.toContain('Loading')); }
 function change(id: string, value: string): void { control(id).value = value; control(id).dispatchEvent(new Event(id === 'query' ? 'input' : 'change')); }
 describe('local viewer', () => {
+  it('shows status badges by titles while preserving explicitly selected status columns', async () => {
+    snapshot.postings[0].isNew = true; snapshot.postings[0].shortlisted = true;
+    await open();
+    expect(document.querySelector('[data-column="isNew"]')).toBeNull();
+    expect(document.querySelector('[data-column="shortlisted"]')).toBeNull();
+    const title = document.querySelector('[data-save="1001"]')!.closest('td')!;
+    expect(title.querySelector('.posting-flags')!.textContent).toContain('New');
+    expect(title.querySelector('.posting-flags')!.textContent).toContain('SCOPE shortlist');
+    const statusColumn = document.querySelector<HTMLInputElement>('#column-options input[value="isNew"]')!;
+    statusColumn.checked = true; statusColumn.dispatchEvent(new Event('change'));
+    expect(document.querySelector('th[data-column="isNew"]')).not.toBeNull();
+    expect(document.querySelector('[data-save="1001"]')!.closest('td')!.querySelector('.posting-flags')!.textContent).not.toContain('New');
+    expect(snapshot.postings[0].isNew).toBe(true);
+  });
+
   it('keeps focus on sorted headers and returns chip removal to search', async () => {
     await open();
     const header = document.querySelector<HTMLButtonElement>('[data-sort="jobTitle"]')!; header.focus(); header.click();

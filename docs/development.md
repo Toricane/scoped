@@ -78,7 +78,9 @@ Keep the source CSV ignored and unchanged. Do not commit account markup, session
 
 ## Interface conventions
 
-The viewer combines brand/collection metadata, collection tabs, List/Globe controls and exports in one compact header. Controls wrap in DOM order at narrow widths; truncated metadata retains its full text in a title tooltip. Keep one export menu with unique download IDs.
+Primary organization/location facets precede flag filters and the Deadline display disclosure. Supporting filter/city explanations use native disclosures. Fresh preferences omit status columns; render status badges beside titles only when the corresponding column is absent, retaining explicit existing column selections. Icons use local SVG paths with currentColor and decorative ARIA semantics; actions retain accessible text. Shared toolbar sizes and radii preserve dense desktop rows, with 44px coarse-pointer controls and hover styling limited to hover-capable pointers.
+
+The viewer combines brand/collection metadata, collection tabs, List/Globe controls and exports in one compact header. Controls wrap in DOM order at narrow widths; truncated metadata retains its full text in a title tooltip. Keep one export menu with unique download IDs. Collection navigation uses ordinary same-tab links, retaining native modifier-click/new-tab behavior; posting-title links still open separately.
 
 The popup puts the collection first and distinguishes it from the Saved library; export/setup disclosures keep its ordinary state compact. The viewer's primary search stays visible, while Search options holds scope/exclusions and indicates active settings. Filter-option sorting is stored per group in facetOrder within existing version-1 preferences, distinct from result sorting. Counts represent the full saved collection. Keep old preferences compatible, retain list-search text while removing chips, and clear it on Clear filters. Disclosures/menus must remain keyboard-accessible; viewer menus dismiss on outside click/Escape. Details uses a responsive field grid, and title links retain a visible new-tab cue.
 
