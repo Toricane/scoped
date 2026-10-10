@@ -39,6 +39,38 @@ const rows = () => document.querySelectorAll('#rows tr:not(.expanded)');
 async function open(): Promise<void> { await import('../src/viewer'); await vi.waitFor(() => expect(document.getElementById('snapshot-info')!.textContent).not.toContain('Loading')); }
 function change(id: string, value: string): void { control(id).value = value; control(id).dispatchEvent(new Event(id === 'query' ? 'input' : 'change')); }
 describe('local viewer', () => {
+  it('collapses the entire sidebar without changing results and retains the choice when clearing filters', async () => {
+    await open();
+    change('query', 'python'); await vi.waitFor(() => expect(rows()).toHaveLength(1));
+    document.querySelector<HTMLElement>('#filter-panel > summary')!.click();
+    expect(control('filter-panel').hidden).toBe(true);
+    expect(document.querySelector('.workspace')!.classList.contains('sidebar-collapsed')).toBe(true);
+    expect(control('sidebar-toggle').textContent).toBe('Show filters');
+    expect(control('sidebar-toggle').getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(control('sidebar-toggle'));
+    expect(rows()).toHaveLength(1);
+    await vi.waitFor(() => expect(stored[preferencesKey]).toMatchObject({ sidebarCollapsed: true, query: 'python' }));
+    control('reset').click(); expect(rows()).toHaveLength(3); expect(control('filter-panel').hidden).toBe(true);
+    control('sidebar-toggle').click();
+    expect(control('filter-panel').hidden).toBe(false);
+    expect(control('sidebar-toggle').getAttribute('aria-expanded')).toBe('true');
+  });
+  it('loads a collapsed Saved sidebar and keeps mobile filters accessible across resize', async () => {
+    vi.stubGlobal('location', { href: 'chrome-extension://scoped/viewer.html?view=saved' });
+    stored['viewerPreferences:saved:v1'] = { ...defaults(), sidebarCollapsed: true };
+    const media = { matches: false, addEventListener: vi.fn() };
+    vi.stubGlobal('matchMedia', () => media);
+    await open(); expect(control('filter-panel').hidden).toBe(true);
+    media.matches = true; media.addEventListener.mock.calls[0][1]();
+    expect(control('filter-panel').hidden).toBe(false);
+    expect(control('sidebar-toggle').hidden).toBe(true);
+    expect(control('filters-toggle').hidden).toBe(false);
+    expect(control('filter-panel').parentElement).toBe(control('filter-dialog'));
+    media.matches = false; media.addEventListener.mock.calls[0][1]();
+    expect(control('filter-panel').hidden).toBe(true);
+    expect(control('sidebar-toggle').hidden).toBe(false);
+    expect(control('filter-panel').parentElement).toBe(document.querySelector('.workspace'));
+  });
   it('saves notes with a position, renders notes as text, and preserves the draft on failure', async () => {
     const originalSend = sendMessage.getMockImplementation() as (command: any) => Promise<any>;
     sendMessage.mockImplementation(async command => {

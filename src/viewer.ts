@@ -155,10 +155,29 @@ function arrangeFilters(): void {
   const compact = compactMedia?.matches ?? false;
   if (filterDialog.open) filterDialog.close();
   element('filters-toggle').hidden = !compact;
+  updateSidebar();
   const options = document.querySelector<HTMLDetailsElement>('.result-options')!; options.open = !compact;
   if (compact) filterDialog.append(filterPanel); else filterHome.after(filterPanel);
   filterPanel.open = true;
 }
+function updateSidebar(): void {
+  const compact = compactMedia?.matches ?? false;
+  const collapsed = !compact && preferences.sidebarCollapsed;
+  filterPanel.hidden = collapsed;
+  document.querySelector('.workspace')!.classList.toggle('sidebar-collapsed', collapsed);
+  const toggle = element('sidebar-toggle');
+  toggle.hidden = compact;
+  toggle.textContent = collapsed ? 'Show filters' : 'Hide filters';
+  toggle.setAttribute('aria-expanded', String(!collapsed));
+}
+function toggleSidebar(): void {
+  preferencesLoaded = true; preferences.sidebarCollapsed = !preferences.sidebarCollapsed;
+  updateSidebar(); save(); element('sidebar-toggle').focus({ preventScroll: true });
+}
+element('sidebar-toggle').addEventListener('click', toggleSidebar);
+filterPanel.querySelector('summary')!.addEventListener('click', event => {
+  if (!compactMedia?.matches) { event.preventDefault(); toggleSidebar(); }
+});
 arrangeFilters(); compactMedia?.addEventListener('change', arrangeFilters);
 element('filters-toggle').addEventListener('click', () => { filterDialog.showModal(); element('filters-close').focus(); });
 element('filters-close').addEventListener('click', () => filterDialog.close());
@@ -186,8 +205,8 @@ const previousSearches: PreviousSearch[] = [];
 function companySearch(company: string): void {
   if (timer) clearTimeout(timer);
   previousSearches.push({ preferences: structuredClone(preferences), page, mapView, scroll: document.querySelector('.table-scroll')!.scrollTop, company, facetSearches: [...document.querySelectorAll<HTMLInputElement>('.facet-search')].map(input => input.value) });
-  const { sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, notRelevantLast } = preferences;
-  preferences = { ...defaults(), sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, notRelevantLast, organizations: [company] };
+  const { sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, notRelevantLast, sidebarCollapsed } = preferences;
+  preferences = { ...defaults(), sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, notRelevantLast, sidebarCollapsed, organizations: [company] };
   preferencesLoaded = true; mapView = false;
   fillControls(); makeFacets(true); changed();
   document.querySelector('.table-scroll')!.scrollTop = 0;
@@ -204,6 +223,7 @@ element('search-back').addEventListener('click', () => {
   (company ?? element('query')).focus({ preventScroll: true });
 });
 function fillControls(): void {
+  updateSidebar();
   for (const id of ['query', 'exclude', 'scope', 'searchMode', 'isNew', 'shortlisted', 'from', 'to', 'min', 'max', 'sort', 'direction', 'pageSize'] as const) element<HTMLInputElement | HTMLSelectElement>(id).value = String(preferences[id]);
   for (const id of ['unknownDeadline', 'hideExpired', 'expiredLast', 'relativeDeadlines', 'hideNotRelevant', 'notRelevantLast'] as const) element<HTMLInputElement>(id).checked = preferences[id];
   document.querySelectorAll<HTMLInputElement>('#column-options input').forEach(input => { input.checked = preferences.columns.includes(input.value as Column); });
@@ -529,8 +549,8 @@ element('undo-saved').addEventListener('click', async () => {
   } catch (value) { error(value); if (lastRemoval === removal) { undo.disabled = false; undo.focus(); } }
 });
 function reset(): void {
-  const { sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, notRelevantLast } = preferences;
-  preferences = { ...defaults(), sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, notRelevantLast }; fillControls(); makeFacets(true); changed();
+  const { sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, notRelevantLast, sidebarCollapsed } = preferences;
+  preferences = { ...defaults(), sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines, searchMode, notRelevantLast, sidebarCollapsed }; fillControls(); makeFacets(true); changed();
 }
 const relevanceOption = node('option', 'Relevance'); relevanceOption.value = 'relevance'; element('sort').append(relevanceOption);
 element('semantic-retry').addEventListener('click', () => { semanticKey = ''; changed(); });

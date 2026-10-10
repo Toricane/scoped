@@ -9,7 +9,7 @@ export type SearchScope = typeof searchScopes[number];
 type Flag = 'all' | 'yes' | 'no';
 export interface Preferences {
   version: 1; query: string; exclude: string; scope: SearchScope; searchMode: 'keyword' | 'semantic';
-  groupGreaterVancouver: boolean; organizations: string[]; locations: string[]; statuses: string[]; terms: string[];
+  sidebarCollapsed: boolean; groupGreaterVancouver: boolean; organizations: string[]; locations: string[]; statuses: string[]; terms: string[];
   facetOrder: Record<'organizations' | 'locations' | 'statuses' | 'terms', FacetOrder>;
   isNew: Flag; shortlisted: Flag; from: string; to: string; unknownDeadline: boolean; hideExpired: boolean; expiredLast: boolean; relativeDeadlines: boolean; hideNotRelevant: boolean; notRelevantLast: boolean;
   min: string; max: string; sort: Column | 'relevance'; direction: 'asc' | 'desc'; pageSize: 25 | 50 | 100 | 1000; columns: Column[];
@@ -21,7 +21,7 @@ export function positionTitle(posting: Posting): string {
   return posting.jobTitle.replace(new RegExp(`\\s+${posting.id}[A-Za-z]*(?=\\s+E\\d+\\s*$|\\s*$)`), '').trim() || posting.jobTitle;
 }
 export function defaults(): Preferences {
-  return { version: 1, query: '', exclude: '', scope: 'all', searchMode: 'keyword', groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, hideNotRelevant: false, notRelevantLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 1000, columns: [...defaultColumns] };
+  return { version: 1, query: '', exclude: '', scope: 'all', searchMode: 'keyword', sidebarCollapsed: false, groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, hideNotRelevant: false, notRelevantLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 1000, columns: [...defaultColumns] };
 }
 export function readPreferences(value: unknown): Preferences {
   const result = defaults();
@@ -42,7 +42,7 @@ export function readPreferences(value: unknown): Preferences {
   if (typeof stored.sort === 'string' && Object.hasOwn(columnLabels, stored.sort)) result.sort = stored.sort as Column;
   if (stored.sort === 'relevance' && result.searchMode === 'semantic') result.sort = 'relevance';
   if ([25, 50, 100, 1000].includes(Number(stored.pageSize))) result.pageSize = stored.pageSize as Preferences['pageSize'];
-  for (const key of ['hideExpired', 'expiredLast', 'groupGreaterVancouver', 'relativeDeadlines', 'hideNotRelevant', 'notRelevantLast'] as const) if (typeof stored[key] === 'boolean') result[key] = stored[key];
+  for (const key of ['sidebarCollapsed', 'hideExpired', 'expiredLast', 'groupGreaterVancouver', 'relativeDeadlines', 'hideNotRelevant', 'notRelevantLast'] as const) if (typeof stored[key] === 'boolean') result[key] = stored[key];
   if (stored.unknownDeadline === true) result.unknownDeadline = true;
   if (Array.isArray(stored.columns)) {
     result.columns = [...new Set(stored.columns.filter((entry): entry is Column => typeof entry === 'string' && Object.hasOwn(columnLabels, entry)))];

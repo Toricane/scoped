@@ -214,3 +214,5 @@ textarea { width:100%; resize:vertical; font:inherit; padding:10px; border:1px s
 .posting-note { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(hover:hover){.company-search:hover { color:var(--green); text-decoration-style:solid; }}
 @media(pointer:coarse){.company-search { min-height:44px; }}
+
+.workspace.sidebar-collapsed { grid-template-columns:minmax(0,1fr); }
