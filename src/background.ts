@@ -1,7 +1,9 @@
 import { api } from './api';
+import { annotationPrefix, customPrefix, isLocalId, isCustomId, readAnnotations, readCustom } from './local-library';
 import { saveSnapshot, saveText } from './download';
 import { backupLimit, createBackup, parseBackup, restoreBackup } from './backup';
 import { navigatePostingTab } from './posting-navigation';
+import { validateSnapshot } from './viewer-model';
 import { readRemovedSaved, removedSavedKey, readApplied, appliedKey, readSaved, savedKey } from './saved';
 import { commitSnapshot, isActive, readState, runKey } from './store';
 import { isSourceUrl, type Command, type Reply, type Snapshot, type RunState } from './types';
@@ -21,6 +23,40 @@ async function failTab(tabId: number, message: string): Promise<void> {
 }
 
 async function handle(command: Command, sender: chrome.runtime.MessageSender): Promise<unknown> {
+  if (command.type === 'setRelevance' || command.type === 'setAnnotation' || command.type === 'setCustomApplied' || command.type === 'deleteCustomApplied') {
+    if (sender.id !== api.runtime.id || sender.url !== api.runtime.getURL('viewer.html') && !sender.url?.startsWith(api.runtime.getURL('viewer.html') + '?')) throw new Error('Manage local entries from Scoped’s viewer.');
+    if (command.type === 'setRelevance') {
+      if (!Array.isArray(command.changes) || !command.changes.length || command.changes.length > 1000 || command.changes.some(change => !change || typeof change.id !== 'string' || !isLocalId(change.id) || typeof change.notRelevant !== 'boolean') || new Set(command.changes.map(change => change.id)).size !== command.changes.length) throw new Error('Invalid relevance marks.');
+      const stored = await api.storage.local.get(null), annotations = readAnnotations(stored), custom = readCustom(stored);
+      const known = new Set([...readSaved(stored).keys(), ...readApplied(stored).keys(), ...annotations.keys()]);
+      try { validateSnapshot(stored.snapshot).postings.forEach(row => known.add(row.id)); } catch { /* Retained records remain available. */ }
+      const updates: Record<string, unknown> = {};
+      for (const change of command.changes) {
+        if (!(isCustomId(change.id) ? custom.has(change.id) : known.has(change.id))) throw new Error('A posting is no longer available. Refresh the viewer.');
+        updates[annotationPrefix + change.id] = { ...(annotations.get(change.id) ?? { version: 1, id: change.id, notes: '' }), notRelevant: change.notRelevant };
+      }
+      await api.storage.local.set(updates); return;
+    }
+    if (command.type === 'setCustomApplied') {
+      const record = readCustom({ [customPrefix + command.record?.id]: command.record }).get(command.record?.id);
+      if (!record) throw new Error('Enter a title and valid application date. Notes may contain up to 20,000 characters.');
+      await api.storage.local.set({ [customPrefix + record.id]: record }); return record;
+    }
+    if (typeof command.id !== 'string' || !isLocalId(command.id)) throw new Error('Invalid local posting ID.');
+    if (command.type === 'deleteCustomApplied') {
+      if (!isCustomId(command.id)) throw new Error('Invalid custom entry.');
+      await api.storage.local.remove([customPrefix + command.id, annotationPrefix + command.id]); return;
+    }
+    if (command.notes !== undefined && (typeof command.notes !== 'string' || command.notes.length > 20000) || command.notRelevant !== undefined && typeof command.notRelevant !== 'boolean' || command.notes === undefined && command.notRelevant === undefined) throw new Error('Invalid notes or relevance mark.');
+    const stored = await api.storage.local.get(null);
+    let current = false;
+    try { current = validateSnapshot(stored.snapshot).postings.some(row => row.id === command.id); } catch { /* Retained local records can still be annotated without a valid collection. */ }
+    const known = isCustomId(command.id) ? readCustom(stored).has(command.id) : current || readSaved(stored).has(command.id) || readApplied(stored).has(command.id) || readAnnotations(stored).has(command.id);
+    if (!known) throw new Error('This posting is no longer available. Refresh the viewer.');
+    const prior = readAnnotations(stored).get(command.id) ?? { version: 1, id: command.id, notes: '', notRelevant: false };
+    const record = { ...prior, ...(command.notes !== undefined ? { notes: command.notes } : {}), ...(command.notRelevant !== undefined ? { notRelevant: command.notRelevant } : {}) };
+    await api.storage.local.set({ [annotationPrefix + command.id]: record }); return record;
+  }
   if (command.type === 'restoreBackup') {
     if (sender.id !== api.runtime.id || sender.url !== api.runtime.getURL('backup.html')) throw new Error('Restore backups from Scoped’s backup page.');
     if (typeof command.text !== 'string') throw new Error('Invalid backup request.');
@@ -28,7 +64,7 @@ async function handle(command: Command, sender: chrome.runtime.MessageSender): P
     return;
   }
   if (command.type === 'getSaved' || command.type === 'getLibrary' || command.type === 'setSaved' || command.type === 'setApplied' || command.type === 'undoSavedRemoval') {
-    if (!sender.url?.startsWith(api.runtime.getURL(''))) throw new Error('Manage saved postings from Scoped.');
+    if (sender.id !== undefined && sender.id !== api.runtime.id || !sender.url?.startsWith(api.runtime.getURL(''))) throw new Error('Manage saved postings from Scoped.');
     if (command.type === 'getSaved' || command.type === 'getLibrary') {
       const stored = await api.storage.local.get(null);
       // Undo copies are temporary and cannot authorize posting navigation.
@@ -40,6 +76,8 @@ async function handle(command: Command, sender: chrome.runtime.MessageSender): P
         }
       }
       return Object.fromEntries([
+        ...(command.type === 'getLibrary' ? [...readAnnotations(stored)].map(([id, record]) => [annotationPrefix + id, record]) : []),
+        ...(command.type === 'getLibrary' ? [...readCustom(stored)].map(([id, record]) => [customPrefix + id, record]) : []),
         ...[...readSaved(stored)].map(([id, record]) => [savedKey(id), record]),
         ...(command.type === 'getLibrary' ? [...readApplied(stored)].map(([id, record]) => [appliedKey(id), record]) : []),
         ...(command.type === 'getLibrary' ? [...readRemovedSaved(stored)].map(id => {
@@ -63,6 +101,7 @@ async function handle(command: Command, sender: chrome.runtime.MessageSender): P
     }
     const markingApplied = command.type === 'setApplied';
     const enabled = markingApplied ? command.applied : command.saved;
+    if (command.type === 'setSaved' && command.notes !== undefined && (typeof command.notes !== 'string' || command.notes.length > 20000 || !command.saved)) throw new Error('Invalid posting notes.');
     if (typeof command.id !== 'string' || !/^\d+$/.test(command.id) || typeof enabled !== 'boolean') throw new Error('Invalid saved posting request.');
     const key = markingApplied ? appliedKey(command.id) : savedKey(command.id);
     if (!enabled) {
@@ -77,13 +116,14 @@ async function handle(command: Command, sender: chrome.runtime.MessageSender): P
       }
       await api.storage.local.remove(key); return { undoToken: token };
     }
-    const stored = await api.storage.local.get(['snapshot', savedKey(command.id), appliedKey(command.id)]);
+    const stored = await api.storage.local.get(['snapshot', savedKey(command.id), appliedKey(command.id), annotationPrefix + command.id]);
     const priorSaved = readSaved(stored).get(command.id), priorApplied = readApplied(stored).get(command.id);
     const posting = (stored.snapshot as Snapshot | undefined)?.postings.find(row => row.id === command.id) ?? priorSaved?.posting ?? priorApplied?.posting;
     if (!posting) throw new Error('This posting is no longer available to save. Refresh the viewer.');
     await api.storage.local.set({ [key]: markingApplied
       ? { version: 1, appliedAt: priorApplied?.appliedAt ?? new Date().toISOString(), posting }
-      : { version: 1, savedAt: priorSaved?.savedAt ?? new Date().toISOString(), posting } });
+      : { version: 1, savedAt: priorSaved?.savedAt ?? new Date().toISOString(), posting },
+      ...(command.type === 'setSaved' && command.notes !== undefined ? { [annotationPrefix + command.id]: { version: 1, id: command.id, notRelevant: readAnnotations(stored).get(command.id)?.notRelevant ?? false, notes: command.notes } } : {}) });
     if (!markingApplied) await api.storage.local.remove(removedSavedKey(command.id));
     return;
   }

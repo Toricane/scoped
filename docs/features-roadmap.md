@@ -1,6 +1,6 @@
 # Feature ideas after Saved and globe
 
-Status: proposals, not implemented. Saved (including SCOPE shortlist), Applied, local-time expiry presentation, and the offline globe are implemented in 0.5.0. These priorities target fast decisions about which positions deserve more attention.
+Status: remaining proposals, with implemented milestones noted below. Saved (including SCOPE shortlist), Applied, local-time expiry presentation, and the offline globe are implemented in 0.5.0. Notes, custom Applied entries and Not relevant marking are also now implemented. These priorities target fast decisions about which positions deserve more attention.
 
 ## 1. On-demand posting preview and comparison
 
@@ -9,6 +9,8 @@ Load a full posting only when the user asks for its preview, then cache the capt
 Pair this with a Compare view for two to four Saved positions. Align organization, role, city, term, deadline, application count, and any explicitly captured detail fields. This reduces repeated tabs and makes tradeoffs visible. Until previews exist, comparison can still use table fields while clearly showing its limits.
 
 ## 2. Notes, tags, and review status
+
+Notes, custom Applied entries and reversible Not relevant marks are now implemented, including full backup support. User-defined tags and richer review statuses below remain proposals.
 
 Attach personal notes, reasons to apply, questions to research, and user-defined tags to posting IDs. Use explicit local statuses such as To review, Interested, Researching, and Passed, complementing the existing Applied mark. A reversible Hide action can remove passed positions from the ordinary list without losing them. Never update SCOPE or infer an application submission from clicking a title.
 

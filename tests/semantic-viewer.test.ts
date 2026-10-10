@@ -16,6 +16,18 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const rows = () => document.querySelectorAll('#rows [data-save]');
+it('keeps semantic ranking and row nodes intact during annotation-only storage events in marking mode', async () => {
+  mocks.search.mockResolvedValue({ scores: new Map([['1001', 0.8], ['1002', 0.3]]), cacheAvailable: true });
+  await import('../src/viewer'); await vi.waitFor(() => expect(rows()).toHaveLength(2));
+  document.getElementById('mark-mode')!.click();
+  const original = document.querySelector('[data-mark="1001"]')!.closest('tr');
+  const searches = mocks.search.mock.calls.length;
+  storageListener({ 'annotation:1001': { newValue: { version: 1, id: '1001', notes: 'Keep notes', notRelevant: true } } }, 'local');
+  expect(document.querySelector('[data-mark="1001"]')!.closest('tr')).toBe(original);
+  expect(original!.classList.contains('not-relevant-posting')).toBe(true);
+  expect(mocks.search).toHaveBeenCalledTimes(searches);
+  expect(document.querySelector<HTMLElement>('.relevance-row')!.style.getPropertyValue('--relevance-width')).toBe('80%');
+});
 it('searches retained Saved records with separate per-view preferences and no snapshot', async () => {
   vi.stubGlobal('location', { href: 'chrome-extension://scoped/viewer.html?view=saved' });
   delete stored.snapshot;

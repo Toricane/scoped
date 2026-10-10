@@ -21,6 +21,7 @@ beforeEach(() => {
   get = vi.fn(async keys => Object.fromEntries(keys.map((key: string) => [key, stored[key]])));
   set = vi.fn(async items => { Object.assign(stored, items); }); onChanged = vi.fn(); sendMessage = vi.fn(async (command: any) => {
     if (command.type === 'getLibrary') return { ok: true, value: savedRecords };
+    if (command.type === 'setRelevance') for (const change of command.changes) savedRecords['annotation:' + change.id] = { version: 1, id: change.id, notes: '', notRelevant: change.notRelevant };
     if (command.type === 'setSaved') {
       if (command.saved) { savedRecords['saved:' + command.id] = { version: 1, savedAt: snapshot.collectedAt, posting: snapshot.postings.find(row => row.id === command.id) }; delete savedRecords['savedRemoved:' + command.id]; }
       else { delete savedRecords['saved:' + command.id]; savedRecords['savedRemoved:' + command.id] = { version: 1, id: command.id, removedAt: snapshot.collectedAt }; }
@@ -38,6 +39,100 @@ const rows = () => document.querySelectorAll('#rows tr:not(.expanded)');
 async function open(): Promise<void> { await import('../src/viewer'); await vi.waitFor(() => expect(document.getElementById('snapshot-info')!.textContent).not.toContain('Loading')); }
 function change(id: string, value: string): void { control(id).value = value; control(id).dispatchEvent(new Event(id === 'query' ? 'input' : 'change')); }
 describe('local viewer', () => {
+  it('saves notes with a position, renders notes as text, and preserves the draft on failure', async () => {
+    const originalSend = sendMessage.getMockImplementation() as (command: any) => Promise<any>;
+    sendMessage.mockImplementation(async command => {
+      if (command.type === 'setSaved' && command.notes !== undefined) savedRecords['annotation:' + command.id] = { version: 1, id: command.id, notes: command.notes, notRelevant: false };
+      return originalSend(command);
+    });
+    snapshot.postings[0].shortlisted = false; await open();
+    document.querySelector<HTMLButtonElement>('[data-notes="1001"]')!.click();
+    control('posting-notes').value = '<b>private</b>\nFollow up'; control('notes-save-posting').click();
+    await vi.waitFor(() => expect(document.querySelector('[data-save="1001"]')!.getAttribute('aria-pressed')).toBe('true'));
+    expect(sendMessage).toHaveBeenCalledWith({ type: 'setSaved', id: '1001', saved: true, notes: '<b>private</b>\nFollow up' });
+    document.querySelector<HTMLButtonElement>('[data-details="1001"]')!.click();
+    expect(document.querySelector('.posting-note')!.textContent).toBe('<b>private</b>\nFollow up'); expect(document.querySelector('.posting-note b')).toBeNull();
+    document.querySelector<HTMLButtonElement>('[data-notes="1001"]')!.click();
+    control('posting-notes').value = 'draft';
+    sendMessage.mockImplementation(async command => command.type === 'setAnnotation' ? { ok: false, error: 'Storage full' } : originalSend(command));
+    control('notes-form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await vi.waitFor(() => expect(control('notes-error').textContent).toBe('Storage full'));
+    expect(control('posting-notes').value).toBe('draft'); expect(control('notes-dialog').hasAttribute('open')).toBe(true);
+  });
+  it('keeps marking rows in an unlabeled checkbox column until Done, then hides and restores them', async () => {
+    const originalSend = sendMessage.getMockImplementation() as (command: any) => Promise<any>;
+    sendMessage.mockImplementation(async command => {
+      if (command.type === 'setAnnotation') { const record = { version: 1, id: command.id, notes: '', notRelevant: command.notRelevant }; savedRecords['annotation:' + command.id] = record; return { ok: true, value: record }; }
+      return originalSend(command);
+    });
+    await open(); control('mark-mode').click();
+    expect(document.querySelectorAll('[data-mark]')).toHaveLength(3);
+    expect(document.querySelector('#headers th')!.textContent).toBe('');
+    expect(document.querySelector('#rows tr td')!.classList.contains('mark-column')).toBe(true);
+    expect(document.querySelector('.mark-column label')!.textContent).toBe('');
+    const originalOrder = [...document.querySelectorAll<HTMLElement>('[data-save]')].map(button => button.dataset.save);
+    const title = document.querySelector('[data-save="1001"]')!.closest('td')!.querySelector('a')!; expect(title.target).toBe('_blank');
+    control('hideNotRelevant').checked = true; control('hideNotRelevant').dispatchEvent(new Event('change'));
+    document.querySelector<HTMLInputElement>('[data-mark="1001"]')!.click();
+    await vi.waitFor(() => expect(document.querySelectorAll('.not-relevant-posting')).toHaveLength(1));
+    expect(rows()).toHaveLength(3);
+    expect([...document.querySelectorAll<HTMLElement>('[data-save]')].map(button => button.dataset.save)).toEqual(originalOrder);
+    document.querySelector<HTMLButtonElement>('[data-details="1001"]')!.click();
+    expect(document.querySelector<HTMLTableCellElement>('.expanded td')!.colSpan).toBe(defaults().columns.length + 1);
+    control('mark-mode').click(); expect(rows()).toHaveLength(2);
+    expect(document.querySelector('.mark-column')).toBeNull();
+    expect(snapshot.postings[0].id).toBe('1001');
+    control('hideNotRelevant').checked = false; control('hideNotRelevant').dispatchEvent(new Event('change'));
+    expect(rows()[2].textContent).toContain('Not relevant');
+    document.querySelector<HTMLButtonElement>('[data-relevance="1001"]')!.click();
+    await vi.waitFor(() => expect(document.querySelectorAll('.not-relevant-posting')).toHaveLength(0));
+  });
+  it('keeps the current marking page and scroll position through annotation storage updates', async () => {
+    snapshot.postings = Array.from({ length: 60 }, (_, i) => ({ ...snapshot.postings[0], id: String(2000 + i) })); snapshot.reportedTotal = 60;
+    stored[preferencesKey] = { ...defaults(), pageSize: 25 };
+    const originalSend = sendMessage.getMockImplementation() as (command: any) => Promise<any>;
+    sendMessage.mockImplementation(async command => {
+      if (command.type === 'setAnnotation') { const record = { version: 1, id: command.id, notes: '', notRelevant: command.notRelevant }; savedRecords['annotation:' + command.id] = record; return { ok: true, value: record }; }
+      return originalSend(command);
+    });
+    await open(); control('next').click(); control('mark-mode').click();
+    const scroller = document.querySelector<HTMLElement>('.table-scroll')!; scroller.scrollTop = 120;
+    const originalOrder = [...document.querySelectorAll<HTMLElement>('[data-save]')].map(button => button.dataset.save);
+    const checkbox = document.querySelector<HTMLInputElement>('[data-mark]')!; checkbox.click();
+    await vi.waitFor(() => expect(document.querySelector('.not-relevant-posting')).not.toBeNull());
+    const reads = sendMessage.mock.calls.filter(([command]) => command.type === 'getLibrary').length;
+    const originalRows = [...rows()];
+    onChanged.mock.calls[0][0]({ ['annotation:' + checkbox.dataset.mark]: { newValue: { version: 1, id: checkbox.dataset.mark, notes: '', notRelevant: true } } }, 'local');
+    expect(sendMessage.mock.calls.filter(([command]) => command.type === 'getLibrary').length).toBe(reads);
+    expect([...rows()]).toEqual(originalRows);
+    expect(control('page-label').textContent).toBe('Page 2 of 3'); expect(scroller.scrollTop).toBe(120);
+    expect([...document.querySelectorAll<HTMLElement>('[data-save]')].map(button => button.dataset.save)).toEqual(originalOrder);
+  });
+  it('checks a row from its text without replacing rows or intercepting posting action buttons', async () => {
+    await open(); control('mark-mode').click();
+    const checkbox = document.querySelector<HTMLInputElement>('[data-mark="1001"]')!, row = checkbox.closest('tr')!;
+    const originalRows = [...rows()]; row.querySelector<HTMLElement>('[data-column="location"]')!.click();
+    expect(checkbox.checked).toBe(true); expect([...rows()]).toEqual(originalRows);
+    row.querySelector<HTMLElement>('summary')!.click(); expect(checkbox.checked).toBe(true);
+    row.querySelector<HTMLElement>('[data-column="location"]')!.click(); expect(checkbox.checked).toBe(false);
+    control('mark-mode').click();
+  });
+  it('creates and edits custom Applied entries without SCOPE links', async () => {
+    vi.stubGlobal('location', { href: 'chrome-extension://scoped/viewer.html?view=applied' });
+    const originalSend = sendMessage.getMockImplementation() as (command: any) => Promise<any>;
+    sendMessage.mockImplementation(async command => {
+      if (command.type === 'setCustomApplied') { savedRecords['customApplied:' + command.record.id] = command.record; return { ok: true, value: command.record }; }
+      return originalSend(command);
+    });
+    await open(); control('add-custom').click(); control('custom-title').value = 'External Engineer'; control('custom-notes').value = 'Applied elsewhere';
+    control('custom-form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await vi.waitFor(() => expect(rows()).toHaveLength(1));
+    expect(rows()[0].textContent).toContain('External Engineer'); expect(rows()[0].querySelector('a')).toBeNull(); expect(rows()[0].querySelector('[data-save]')).toBeNull();
+    expect(control('applied-count').textContent).toBe('1');
+    document.querySelector<HTMLButtonElement>('[data-notes]')!.click(); expect(control('custom-notes').value).toBe('Applied elsewhere');
+    control('custom-title').value = 'Updated Engineer'; control('custom-form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await vi.waitFor(() => expect(rows()[0].textContent).toContain('Updated Engineer')); expect(rows()).toHaveLength(1);
+  });
   it('shows status badges by titles while preserving explicitly selected status columns', async () => {
     snapshot.postings[0].isNew = true; snapshot.postings[0].shortlisted = true;
     await open();

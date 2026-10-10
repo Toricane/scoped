@@ -84,6 +84,53 @@ beforeEach(async () => {
 });
 
 describe('background lifecycle and persisted transitions', () => {
+  it('validates relevance batches completely, preserves notes, and commits once for all IDs', async () => {
+    const rows = parsePage(document).postings;
+    data.snapshot = { schemaVersion: 1, sourceUrl: SOURCE_URL, collectedAt: '2026-10-10T00:00:00Z', reportedTotal: rows.length, postings: rows };
+    data['annotation:1001'] = { version: 1, id: '1001', notes: 'Keep this note', notRelevant: false };
+    const sender = { id: 'scoped', url: 'chrome-extension://scoped/viewer.html' };
+    expect(await send({ type: 'setRelevance', changes: [{ id: '1001', notRelevant: true }, { id: '1002', notRelevant: true }] }, sender)).toMatchObject({ ok: true });
+    expect(mock.storage.local.set).toHaveBeenCalledTimes(1); expect(mock.storage.local.get).toHaveBeenCalledTimes(1);
+    expect(data['annotation:1001']).toMatchObject({ notes: 'Keep this note', notRelevant: true });
+    const before = { ...data }; mock.storage.local.set.mockClear();
+    for (const changes of [[], [{ id: '1001', notRelevant: false }, { id: '9999', notRelevant: true }], [{ id: '1001', notRelevant: true }, { id: '1001', notRelevant: false }], [{ id: 'bad', notRelevant: true }]]) {
+      expect(await send({ type: 'setRelevance', changes }, sender)).toMatchObject({ ok: false });
+    }
+    expect(await send({ type: 'setRelevance', changes: [{ id: '1001', notRelevant: false }] }, { ...sender, id: 'foreign' })).toMatchObject({ ok: false });
+    expect(mock.storage.local.set).not.toHaveBeenCalled(); expect(data).toEqual(before);
+  });
+  it('serializes notes and relevance independently and saves notes with a retained copy', async () => {
+    const rows = parsePage(document).postings;
+    data.snapshot = { schemaVersion: 1, sourceUrl: SOURCE_URL, collectedAt: '2026-10-10T00:00:00Z', reportedTotal: rows.length, postings: rows };
+    const sender = { id: 'scoped', url: 'chrome-extension://scoped/viewer.html' };
+    const replies = await Promise.all([
+      send({ type: 'setAnnotation', id: '1001', notes: '<script>private</script>\nnext line' }, sender),
+      send({ type: 'setAnnotation', id: '1001', notRelevant: true }, sender),
+    ]);
+    expect(replies.every(reply => reply.ok)).toBe(true);
+    expect(data['annotation:1001']).toMatchObject({ notes: '<script>private</script>\nnext line', notRelevant: true });
+    expect(await send({ type: 'setSaved', id: '1001', saved: true, notes: 'updated' }, sender)).toMatchObject({ ok: true });
+    expect(data['saved:1001']).toBeDefined(); expect(data['annotation:1001']).toMatchObject({ notes: 'updated', notRelevant: true });
+    expect(await send({ type: 'setAnnotation', id: '9999', notes: 'unknown' }, sender)).toMatchObject({ ok: false });
+    expect(await send({ type: 'setAnnotation', id: '1001', notes: 'bad' }, sourceSender)).toMatchObject({ ok: false });
+    expect(await send({ type: 'setAnnotation', id: '1001', notes: 'bad' }, { ...sender, id: 'foreign' })).toMatchObject({ ok: false });
+    expect(await send({ type: 'setAnnotation', id: '1001', notes: 'x'.repeat(20001) }, sender)).toMatchObject({ ok: false });
+    expect(mock.tabs.update).not.toHaveBeenCalled();
+  });
+  it('validates custom Applied entries without adding them to SCOPE libraries or opening SCOPE', async () => {
+    const sender = { id: 'scoped', url: 'chrome-extension://scoped/viewer.html?view=applied' };
+    const id = 'custom:12345678-1234-1234-1234-123456789abc';
+    const record = { version: 1 as const, id, jobTitle: 'External engineer', organization: 'Example', location: '', appliedOn: '2026-10-10', notes: 'Follow up' };
+    expect(await send({ type: 'setCustomApplied', record }, sender)).toMatchObject({ ok: true });
+    expect(await send({ type: 'setCustomApplied', record: { ...record, appliedOn: '2026-02-30' } }, sender)).toMatchObject({ ok: false });
+    expect(await send({ type: 'getLibrary' })).toMatchObject({ value: { ['customApplied:' + id]: record } });
+    expect(await send({ type: 'setSaved', id, saved: true }, sender)).toMatchObject({ ok: false });
+    expect(await send({ type: 'setAnnotation', id, notRelevant: true }, sender)).toMatchObject({ ok: true });
+    mock.storage.local.remove.mockImplementation(async keys => { for (const key of Array.isArray(keys) ? keys : [keys]) delete data[key]; });
+    expect(await send({ type: 'deleteCustomApplied', id }, sender)).toMatchObject({ ok: true });
+    expect(data['customApplied:' + id]).toBeUndefined(); expect(data['annotation:' + id]).toBeUndefined();
+    expect(mock.tabs.update).not.toHaveBeenCalled();
+  });
   it('undoes retained Saved removal through a validated, single-use token without SCOPE navigation', async () => {
     const posting = parsePage(document).postings[0];
     data['saved:1001'] = { version: 1, savedAt: '2026-10-10T00:00:00Z', posting };

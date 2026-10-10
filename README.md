@@ -92,7 +92,17 @@ After submitting an application, click **Mark applied**. It moves the position o
 
 Successful refresh updates retained copies when the ID is present. Missing local Saved/Applied entries remain available with **Not in latest search**; absence from a filtered search does not prove expiry.
 
+Open a posting's **… → Notes / save with notes** to write private notes, even without saving the position. Choose **Save notes**, or **Save posting & notes** to retain the position at the same time. Notes appear in Details and survive refresh, Saved removal and Applied undo. A **Notes** badge identifies annotated positions.
+
+In **Applied**, choose **Add Applied entry** to track applications from any source. Enter a position title and application date, with optional organization, location and notes. These entries have a **Custom** label; their titles do not open SCOPE. Use posting actions to edit the entry or delete it.
+
+Choose **Mark not relevant** to reveal a checkbox beside every visible title. Check positions to mark them, then choose **Done marking**. Posting actions also offer **Mark not relevant / Restore relevance**. Marked positions show **Not relevant**, dim and sort last by default, before the existing expired-last grouping and chosen sort. In the sidebar's **Not relevant** disclosure, choose **Hide not relevant positions** to remove them from both list and globe results, or disable **Show not relevant positions last**. Unhide to restore individual marks. Marking mode is temporary; marks persist across refreshes, and display/filter settings are remembered per view. Title clicks still open SCOPE normally.
+
 Deadline dates and times are interpreted in **your browser's local timezone**. Once the displayed time passes, the position shows **Expired**, dims, and sorts last by default. Use **Hide expired positions** or turn off **Show expired positions last**. Unknown deadlines never expire. Labels update while the viewer is open. Exports preserve original text; the timezone is an interpretation, not a verified SCOPE timezone.
+
+Marking checkboxes occupy a narrow, unlabeled column on the left, with no repeated text above the titles. While marking, newly checked rows gray out and keep their order, page and scroll position, even with **Hide not relevant positions** enabled. Hiding and deprioritization apply when you choose **Done marking**.
+
+In marking mode, click any non-interactive part of a row to toggle its checkbox. Drag from a checkbox or row across other rows to mark a range; start on a checked row to unmark the range instead. Rows crossed quickly are included, and crossing the same row twice in one drag does not toggle it again. Title links, company links and action buttons keep their usual behavior. Touch scrolling and keyboard checkbox controls remain available. Marks update immediately and save in small background batches; failed writes show an error and restore unsaved marks.
 
 **Relative deadlines (next 2 weeks)** displays upcoming deadlines as “in 3 days,” “in 2 hours,” or “in 30 minutes.” Past, unknown, and later deadlines keep their original text. Hover a relative deadline to see its exact date; hover an exact date to see the relative time, including past or more distant deadlines. Details also supports this hover behavior. This display toggle is remembered per view and does not filter results or change exports.
 
@@ -129,7 +139,7 @@ Exports preserve IDs, full source titles, organizations, divisions, locations, t
 
 Only table data is available: descriptions, salaries, and requirements are not collected. One complete snapshot is kept; refresh replaces it only on success. Counts/ranges catch detectable changes but cannot guarantee an atomic snapshot if live postings change without changing the total.
 
-Collection CSV/JSON imports, filtered exports, named saved searches, notes, history, scheduling, ranking, and extension-store publication are deferred. Full Scoped backup JSON restore is supported separately from collection exports.
+Collection CSV/JSON imports, filtered exports, named saved searches, user-defined tags, history, scheduling, and extension-store publication are deferred. Full Scoped backups include notes, relevance marks and custom Applied entries; raw collection exports remain unchanged.
 
 ## Project documentation and verification
 

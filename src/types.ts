@@ -49,12 +49,16 @@ export interface RunState extends Progress {
 }
 
 export type Command =
+  | { type: 'setRelevance'; changes: { id: string; notRelevant: boolean }[] }
+  | { type: 'setAnnotation'; id: string; notes?: string; notRelevant?: boolean }
+  | { type: 'setCustomApplied'; record: import('./local-library').CustomApplied }
+  | { type: 'deleteCustomApplied'; id: string }
   | { type: 'downloadBackup' }
   | { type: 'restoreBackup'; text: string }
   | { type: 'getSaved' }
   | { type: 'getLibrary' }
   | { type: 'setApplied'; id: string; applied: boolean }
-  | { type: 'setSaved'; id: string; saved: boolean }
+  | { type: 'setSaved'; id: string; saved: boolean; notes?: string }
   | { type: 'undoSavedRemoval'; id: string; token: string }
   | { type: 'getState'; tabId: number }
   | { type: 'start'; tabId: number }

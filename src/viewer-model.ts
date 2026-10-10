@@ -11,7 +11,7 @@ export interface Preferences {
   version: 1; query: string; exclude: string; scope: SearchScope; searchMode: 'keyword' | 'semantic';
   groupGreaterVancouver: boolean; organizations: string[]; locations: string[]; statuses: string[]; terms: string[];
   facetOrder: Record<'organizations' | 'locations' | 'statuses' | 'terms', FacetOrder>;
-  isNew: Flag; shortlisted: Flag; from: string; to: string; unknownDeadline: boolean; hideExpired: boolean; expiredLast: boolean; relativeDeadlines: boolean;
+  isNew: Flag; shortlisted: Flag; from: string; to: string; unknownDeadline: boolean; hideExpired: boolean; expiredLast: boolean; relativeDeadlines: boolean; hideNotRelevant: boolean; notRelevantLast: boolean;
   min: string; max: string; sort: Column | 'relevance'; direction: 'asc' | 'desc'; pageSize: 25 | 50 | 100 | 1000; columns: Column[];
 }
 export const preferencesKey = 'viewerPreferences:v1';
@@ -21,7 +21,7 @@ export function positionTitle(posting: Posting): string {
   return posting.jobTitle.replace(new RegExp(`\\s+${posting.id}[A-Za-z]*(?=\\s+E\\d+\\s*$|\\s*$)`), '').trim() || posting.jobTitle;
 }
 export function defaults(): Preferences {
-  return { version: 1, query: '', exclude: '', scope: 'all', searchMode: 'keyword', groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 1000, columns: [...defaultColumns] };
+  return { version: 1, query: '', exclude: '', scope: 'all', searchMode: 'keyword', groupGreaterVancouver: false, organizations: [], locations: [], statuses: [], terms: [], facetOrder: { organizations: 'az', locations: 'az', statuses: 'az', terms: 'az' }, isNew: 'all', shortlisted: 'all', from: '', to: '', unknownDeadline: false, hideExpired: false, expiredLast: true, hideNotRelevant: false, notRelevantLast: true, relativeDeadlines: false, min: '', max: '', sort: 'deadlineText', direction: 'asc', pageSize: 1000, columns: [...defaultColumns] };
 }
 export function readPreferences(value: unknown): Preferences {
   const result = defaults();
@@ -42,7 +42,7 @@ export function readPreferences(value: unknown): Preferences {
   if (typeof stored.sort === 'string' && Object.hasOwn(columnLabels, stored.sort)) result.sort = stored.sort as Column;
   if (stored.sort === 'relevance' && result.searchMode === 'semantic') result.sort = 'relevance';
   if ([25, 50, 100, 1000].includes(Number(stored.pageSize))) result.pageSize = stored.pageSize as Preferences['pageSize'];
-  for (const key of ['hideExpired', 'expiredLast', 'groupGreaterVancouver', 'relativeDeadlines'] as const) if (typeof stored[key] === 'boolean') result[key] = stored[key];
+  for (const key of ['hideExpired', 'expiredLast', 'groupGreaterVancouver', 'relativeDeadlines', 'hideNotRelevant', 'notRelevantLast'] as const) if (typeof stored[key] === 'boolean') result[key] = stored[key];
   if (stored.unknownDeadline === true) result.unknownDeadline = true;
   if (Array.isArray(stored.columns)) {
     result.columns = [...new Set(stored.columns.filter((entry): entry is Column => typeof entry === 'string' && Object.hasOwn(columnLabels, entry)))];
@@ -125,8 +125,8 @@ export interface IndexedPosting { posting: Posting; title: string; all: string; 
 export function indexPostings(postings: Posting[]): IndexedPosting[] {
   return postings.map(posting => ({ posting, title: fold(positionTitle(posting)), all: fold([posting.id, positionTitle(posting), posting.organization, posting.division, posting.location].join('\n')), deadline: deadline(posting.deadlineText) }));
 }
-const numericId = (a: string, b: string) => BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : a.localeCompare(b);
-export function selectPostings(index: IndexedPosting[], preferences: Preferences, now = new Date(), scores?: ReadonlyMap<string, number>): Posting[] {
+const numericId = (a: string, b: string) => /^\d+$/.test(a) && /^\d+$/.test(b) ? BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : a.localeCompare(b) : a.localeCompare(b);
+export function selectPostings(index: IndexedPosting[], preferences: Preferences, now = new Date(), scores?: ReadonlyMap<string, number>, notRelevant: ReadonlySet<string> = new Set()): Posting[] {
   const required = tokens(preferences.query), excluded = tokens(preferences.exclude);
   const flag = (choice: Flag, value: boolean) => choice === 'all' || (choice === 'yes') === value;
   const matches = index.filter(item => {
@@ -137,6 +137,7 @@ export function selectPostings(index: IndexedPosting[], preferences: Preferences
     if (preferences.locations.length && !preferences.locations.some(value => value === row.location || (preferences.groupGreaterVancouver && value === greaterVancouverKey && isGreaterVancouver(row.location)))) return false;
     if (!flag(preferences.isNew, row.isNew) || !flag(preferences.shortlisted, row.shortlisted)) return false;
     if (preferences.hideExpired && isExpired(row.deadlineText, now)) return false;
+    if (preferences.hideNotRelevant && notRelevant.has(row.id)) return false;
     if (preferences.unknownDeadline && item.deadline) return false;
     if (preferences.from && (!item.deadline || item.deadline.date < preferences.from)) return false;
     if (preferences.to && (!item.deadline || item.deadline.date > preferences.to)) return false;
@@ -146,6 +147,10 @@ export function selectPostings(index: IndexedPosting[], preferences: Preferences
   });
   const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
   return matches.sort((a, b) => {
+    if (preferences.notRelevantLast) {
+      const order = Number(notRelevant.has(a.posting.id)) - Number(notRelevant.has(b.posting.id));
+      if (order) return order;
+    }
     if (preferences.expiredLast) {
       const order = Number(isExpired(a.posting.deadlineText, now)) - Number(isExpired(b.posting.deadlineText, now));
       if (order) return order;

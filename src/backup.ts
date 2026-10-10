@@ -1,4 +1,5 @@
 import { readApplied, readRemovedSaved, readSaved } from './saved';
+import { annotationPrefix, customPrefix, readAnnotations, readCustom } from './local-library';
 import { isActive } from './store';
 import type { Posting, RunState, Snapshot } from './types';
 import { readPreferences, validateSnapshot } from './viewer-model';
@@ -40,12 +41,16 @@ function durableData(stored: Record<string, unknown>): Record<string, unknown> {
       if (!readRemovedSaved({ [key]: value }).size) throw new Error(`Invalid Saved removal: ${key}`);
       const record = value as { id: string; removedAt: string };
       data[key] = { version: 1, id: record.id, removedAt: record.removedAt };
+    } else if (key.startsWith(annotationPrefix) || key.startsWith(customPrefix)) {
+      const record = key.startsWith(annotationPrefix) ? readAnnotations({ [key]: value }).values().next().value : readCustom({ [key]: value }).values().next().value;
+      if (!record) throw new Error(`Invalid local record: ${key}`);
+      data[key] = record;
     } else throw new Error(`Unsupported backup entry: ${key}`);
   }
   return data;
 }
 export function createBackup(stored: Record<string, unknown>, now = new Date()): Backup {
-  const selected = Object.fromEntries(Object.entries(stored).filter(([key]) => key === 'snapshot' || (preferenceKeys as readonly string[]).includes(key) || /^(saved|applied|savedRemoved):/.test(key)));
+  const selected = Object.fromEntries(Object.entries(stored).filter(([key]) => key === 'snapshot' || (preferenceKeys as readonly string[]).includes(key) || /^(saved|applied|savedRemoved|annotation|customApplied):/.test(key)));
   // Include defaults for views never opened so migration restores all three views.
   for (const key of preferenceKeys) selected[key] ??= readPreferences(undefined);
   return { format: 'scoped-backup', version: 1, exportedAt: now.toISOString(), data: durableData(selected) };
@@ -61,7 +66,7 @@ export function parseBackup(text: string): Backup {
 }
 export function backupSummary(backup: Backup): string {
   const data = backup.data;
-  return `${(data.snapshot as Snapshot | undefined)?.postings.length ?? 0} collection postings · ${readSaved(data).size} local Saved · ${readApplied(data).size} Applied · ${readRemovedSaved(data).size} Saved removals · ${preferenceKeys.filter(key => key in data).length} view preferences`;
+  return `${(data.snapshot as Snapshot | undefined)?.postings.length ?? 0} collection postings · ${readSaved(data).size} local Saved · ${readApplied(data).size} Applied · ${readRemovedSaved(data).size} Saved removals · ${preferenceKeys.filter(key => key in data).length} view preferences · ${readCustom(data).size} custom Applied · ${readAnnotations(data).size} notes/relevance records`;
 }
 export async function restoreBackup(store: { get(keys: null): Promise<Record<string, unknown>>; set(data: Record<string, unknown>): Promise<void> }, value: unknown): Promise<void> {
   const backup = validateBackup(value);
@@ -70,7 +75,11 @@ export async function restoreBackup(store: { get(keys: null): Promise<Record<str
   const updates = { ...backup.data };
   // Replace the entire local state of each included ID, preserving IDs not backed up.
   // Null counterparts let one storage.set commit everything without clear/remove gaps.
-  const ids = new Set([...readSaved(updates).keys(), ...readApplied(updates).keys(), ...readRemovedSaved(updates)]);
-  for (const id of ids) for (const prefix of ['saved:', 'applied:', 'savedRemoved:']) updates[prefix + id] ??= null;
+  const ids = new Set([...readSaved(updates).keys(), ...readApplied(updates).keys(), ...readRemovedSaved(updates), ...readAnnotations(updates).keys()]);
+  for (const id of ids) {
+    if (id.startsWith('custom:')) continue;
+    for (const prefix of ['saved:', 'applied:', 'savedRemoved:', annotationPrefix]) updates[prefix + id] ??= null;
+  }
+  for (const id of readCustom(updates).keys()) updates[annotationPrefix + id] ??= null;
   await store.set(updates);
 }
