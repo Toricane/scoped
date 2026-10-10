@@ -20,23 +20,55 @@ async function failTab(tabId: number, message: string): Promise<void> {
 }
 
 async function handle(command: Command, sender: chrome.runtime.MessageSender): Promise<unknown> {
-  if (command.type === 'getSaved' || command.type === 'getLibrary' || command.type === 'setSaved' || command.type === 'setApplied') {
+  if (command.type === 'getSaved' || command.type === 'getLibrary' || command.type === 'setSaved' || command.type === 'setApplied' || command.type === 'undoSavedRemoval') {
     if (!sender.url?.startsWith(api.runtime.getURL(''))) throw new Error('Manage saved postings from Scoped.');
     if (command.type === 'getSaved' || command.type === 'getLibrary') {
       const stored = await api.storage.local.get(null);
+      // Undo copies are temporary and cannot authorize posting navigation.
+      for (const id of readRemovedSaved(stored)) {
+        const record = stored[removedSavedKey(id)] as { version: number; id: string; removedAt: string; undo?: { expiresAt: number } };
+        if (record.undo && (!Number.isFinite(record.undo.expiresAt) || Date.now() > record.undo.expiresAt)) {
+          const clean = { version: record.version, id, removedAt: record.removedAt };
+          await api.storage.local.set({ [removedSavedKey(id)]: clean }); stored[removedSavedKey(id)] = clean;
+        }
+      }
       return Object.fromEntries([
         ...[...readSaved(stored)].map(([id, record]) => [savedKey(id), record]),
         ...(command.type === 'getLibrary' ? [...readApplied(stored)].map(([id, record]) => [appliedKey(id), record]) : []),
-        ...(command.type === 'getLibrary' ? [...readRemovedSaved(stored)].map(id => [removedSavedKey(id), stored[removedSavedKey(id)]]) : []),
+        ...(command.type === 'getLibrary' ? [...readRemovedSaved(stored)].map(id => {
+          const record = stored[removedSavedKey(id)] as { version: number; id: string; removedAt: string };
+          return [removedSavedKey(id), { version: record.version, id, removedAt: record.removedAt }];
+        }) : []),
       ]);
+    }
+    if (command.type === 'undoSavedRemoval') {
+      if (typeof command.id !== 'string' || !/^\d+$/.test(command.id) || typeof command.token !== 'string') throw new Error('Invalid Saved undo request.');
+      const stored = await api.storage.local.get(['snapshot', removedSavedKey(command.id)]);
+      const removal = stored[removedSavedKey(command.id)] as { undo?: { token: string; expiresAt: number; record: unknown } } | undefined;
+      const undo = removal?.undo;
+      const record = readSaved({ [savedKey(command.id)]: undo?.record }).get(command.id);
+      if (!readRemovedSaved(stored).has(command.id) || !undo || undo.token !== command.token || !Number.isFinite(undo.expiresAt) || Date.now() > undo.expiresAt || !record) throw new Error('This removal can no longer be undone. Use Save in All postings to restore it.');
+      const current = (stored.snapshot as Snapshot | undefined)?.postings?.find(row => row.id === command.id);
+      const refreshed = current && readSaved({ [savedKey(command.id)]: { ...record, posting: current } }).get(command.id);
+      await api.storage.local.set({ [savedKey(command.id)]: refreshed ?? record });
+      await api.storage.local.remove(removedSavedKey(command.id));
+      return refreshed ?? record;
     }
     const markingApplied = command.type === 'setApplied';
     const enabled = markingApplied ? command.applied : command.saved;
     if (typeof command.id !== 'string' || !/^\d+$/.test(command.id) || typeof enabled !== 'boolean') throw new Error('Invalid saved posting request.');
     const key = markingApplied ? appliedKey(command.id) : savedKey(command.id);
     if (!enabled) {
-      if (!markingApplied) await api.storage.local.set({ [removedSavedKey(command.id)]: { version: 1, id: command.id, removedAt: new Date().toISOString() } });
-      await api.storage.local.remove(key); return;
+      let token: string | undefined;
+      if (!markingApplied) {
+        const stored = await api.storage.local.get(['snapshot', savedKey(command.id), appliedKey(command.id)]);
+        const prior = readSaved(stored).get(command.id);
+        const posting = (stored.snapshot as Snapshot | undefined)?.postings?.find(row => row.id === command.id) ?? prior?.posting ?? readApplied(stored).get(command.id)?.posting;
+        const record = readSaved({ [key]: { version: 1, savedAt: prior?.savedAt ?? new Date().toISOString(), posting } }).get(command.id);
+        token = record ? crypto.randomUUID() : undefined;
+        await api.storage.local.set({ [removedSavedKey(command.id)]: { version: 1, id: command.id, removedAt: new Date().toISOString(), ...(record ? { undo: { token, expiresAt: Date.now() + 5 * 60_000, record } } : {}) } });
+      }
+      await api.storage.local.remove(key); return { undoToken: token };
     }
     const stored = await api.storage.local.get(['snapshot', savedKey(command.id), appliedKey(command.id)]);
     const priorSaved = readSaved(stored).get(command.id), priorApplied = readApplied(stored).get(command.id);

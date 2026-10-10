@@ -27,6 +27,64 @@ function rebuildLibrary(): void {
 let saved = new Map<string, SavedPosting>(), libraryPostings: Posting[] = [];
 let globe: LocationExplorer | undefined, globeLoading = false, mapView = false;
 const saving = new Set<string>();
+const openActions = new Set<string>();
+function closeRowMenu(menu: HTMLDetailsElement): void {
+  const body = menu.querySelector<HTMLElement>('.row-action-options')!;
+  menu.open = false; openActions.delete(menu.dataset.id!);
+  body.hidePopover?.();
+}
+function openRowMenu(menu: HTMLDetailsElement): void {
+  for (const other of document.querySelectorAll<HTMLDetailsElement>('.row-actions[open]')) if (other !== menu) closeRowMenu(other);
+  menu.open = true; openActions.add(menu.dataset.id!);
+  const body = menu.querySelector<HTMLElement>('.row-action-options')!;
+  if (!body.showPopover) return; // jsdom does not implement the browser top layer.
+  body.showPopover();
+  const anchor = menu.querySelector('summary')!.getBoundingClientRect(), popup = body.getBoundingClientRect();
+  body.style.left = `${Math.max(8, Math.min(anchor.right - popup.width, innerWidth - popup.width - 8))}px`;
+  const top = anchor.bottom + 6 + popup.height <= innerHeight - 8 ? anchor.bottom + 6 : anchor.top - popup.height - 6;
+  body.style.top = `${Math.max(8, Math.min(top, innerHeight - popup.height - 8))}px`;
+}
+function dismissRowMenus(): void {
+  for (const menu of document.querySelectorAll<HTMLDetailsElement>('.row-actions[open]')) {
+    const focused = menu.querySelector('.row-action-options')!.contains(document.activeElement);
+    closeRowMenu(menu);
+    if (focused) menu.querySelector('summary')!.focus({ preventScroll: true });
+  }
+}
+window.addEventListener('resize', dismissRowMenus);
+document.addEventListener('scroll', event => { if (!(event.target instanceof Element) || !event.target.closest('.row-action-options')) dismissRowMenus(); }, true);
+element('chips').after(element('saved-feedback'));
+let lastRemoval: { id: string; token: string } | undefined;
+let undoTimer: ReturnType<typeof setTimeout> | undefined;
+function focusRow(id: string, action: 'save' | 'applied' | 'details', index = 0): void {
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>(`#rows button[data-${action}]`)];
+  const target = buttons.find(button => button.dataset[action] === id) ?? buttons[Math.min(index, buttons.length - 1)];
+  if (target) { const menu = target.closest<HTMLDetailsElement>('.row-actions'); if (menu) openRowMenu(menu); target.focus(); }
+  else element('count').focus();
+}
+function dismissSavedFeedback(): void {
+  lastRemoval = undefined; if (undoTimer) clearTimeout(undoTimer);
+  const focused = element('saved-feedback').contains(document.activeElement);
+  element('saved-feedback').hidden = true;
+  if (focused) element('count').focus();
+}
+const filterPanel = element<HTMLDetailsElement>('filter-panel');
+const filterDialog = element<HTMLDialogElement>('filter-dialog');
+const filterHome = document.createComment('Desktop filter sidebar'); filterPanel.before(filterHome);
+const compactMedia = window.matchMedia?.('(max-width: 900px)');
+function arrangeFilters(): void {
+  const compact = compactMedia?.matches ?? false;
+  if (filterDialog.open) filterDialog.close();
+  element('filters-toggle').hidden = !compact;
+  const options = document.querySelector<HTMLDetailsElement>('.result-options')!; options.open = !compact;
+  if (compact) filterDialog.append(filterPanel); else filterHome.after(filterPanel);
+  filterPanel.open = true;
+}
+arrangeFilters(); compactMedia?.addEventListener('change', arrangeFilters);
+element('filters-toggle').addEventListener('click', () => { filterDialog.showModal(); element('filters-close').focus(); });
+element('filters-close').addEventListener('click', () => filterDialog.close());
+filterDialog.addEventListener('close', () => { if (compactMedia?.matches) element('filters-toggle').focus(); });
+filterDialog.addEventListener('click', event => { if (event.target === filterDialog) { const rect = filterDialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) filterDialog.close(); } });
 element<HTMLAnchorElement>('saved-tab').href = api.runtime.getURL('viewer.html?view=saved');
 element<HTMLAnchorElement>('all-tab').href = api.runtime.getURL('viewer.html');
 element<HTMLAnchorElement>('applied-tab').href = api.runtime.getURL('viewer.html?view=applied');
@@ -108,7 +166,7 @@ function makeFacets(clearSearch = false): void {
 }
 function chips(): void {
   const target = element('chips'); target.replaceChildren();
-  const add = (text: string, remove: () => void) => { const button = node('button', `${text} ×`); button.setAttribute('aria-label', `Remove filter: ${text}`); button.addEventListener('click', () => { remove(); fillControls(); makeFacets(); changed(); }); target.append(button); };
+  const add = (text: string, remove: () => void) => { const button = node('button', `${text} ×`); button.setAttribute('aria-label', `Remove filter: ${text}`); button.addEventListener('click', () => { const index = [...target.children].indexOf(button); remove(); fillControls(); makeFacets(); changed(); (target.querySelectorAll<HTMLButtonElement>('button')[Math.min(index, target.children.length - 1)] ?? element('query')).focus(); }); target.append(button); };
   for (const [key, , title] of facetDefs) for (const value of preferences[key]) add(`${title}: ${(key === 'locations' ? locationLabel(value) : value) || 'No status (blank)'}`, () => { preferences[key] = preferences[key].filter(entry => entry !== value); });
   if (preferences.query) add(`Search: ${preferences.query}`, () => { preferences.query = ''; });
   if (preferences.exclude) add(`Exclude: ${preferences.exclude}`, () => { preferences.exclude = ''; });
@@ -131,13 +189,19 @@ function deadlineHover(target: HTMLElement, text: string, relativeShown = false)
 }
 function details(row: Posting): HTMLTableRowElement {
   const tr = node('tr'); tr.className = 'expanded'; tr.id = `details-${row.id}`;
-  const td = node('td'); td.colSpan = preferences.columns.length + 1;
+  const td = node('td'); td.colSpan = preferences.columns.length;
   const list = node('dl');
   for (const [key, label] of Object.entries(columnLabels)) { const field = node('div'); const value = node('dd', display(row, key as Column) || '—'); if (key === 'deadlineText') deadlineHover(value, row.deadlineText); field.append(node('dt', label), value); list.append(field); }
   const copy = node('button', 'Copy posting ID'); copy.addEventListener('click', () => { void navigator.clipboard.writeText(row.id).then(() => { copy.textContent = 'ID copied'; }, error); });
   td.append(list, copy); tr.append(td); return tr;
 }
 function render(): void {
+  const active = document.activeElement as HTMLElement | null;
+  const rowFocus = (['save', 'applied', 'details'] as const).find(key => active?.dataset[key]);
+  const focusedId = rowFocus ? active?.dataset[rowFocus] : undefined;
+  const focusedIndex = active?.closest('tr') ? [...element('rows').children].filter(row => !row.classList.contains('expanded')).indexOf(active.closest('tr')!) : 0;
+  const focusedSort = active?.dataset.sort;
+  const focusedMenu = active?.dataset.rowActions;
   matches = selectPostings(index, preferences);
   const searchOptions = Number(preferences.scope === 'title') + Number(Boolean(preferences.exclude));
   document.querySelector('.search-options summary')!.textContent = searchOptions ? `Search options · ${searchOptions}` : 'Search options';
@@ -145,8 +209,9 @@ function render(): void {
   element('count').textContent = `${matches.length.toLocaleString()} matching / ${libraryPostings.length.toLocaleString()} postings`;
   element('saved-count').textContent = String(savedPostings(saved, snapshot, applied, removedSaved).length);
   element('applied-count').textContent = String(applied.size);
+  element('filters-toggle').textContent = `Filters${preferences.organizations.length + preferences.locations.length + preferences.statuses.length + preferences.terms.length ? ' · ' + (preferences.organizations.length + preferences.locations.length + preferences.statuses.length + preferences.terms.length) : ''}`;
   if (libraryMode) element('snapshot-info').textContent = appliedMode ? `${libraryPostings.length} Applied postings · Marked locally in Scoped` : `${libraryPostings.length} Saved postings · Local saves + SCOPE shortlist · Applied positions are separate`;
-  document.querySelector('.notice')!.textContent = savedMode ? 'Saved includes local saves and your captured SCOPE shortlist. Remove from Saved stays removed after refresh; use Save in All postings to restore it.' : appliedMode ? 'Marked as already applied, locally in Scoped. Undo Applied to return a position to Saved when applicable.' : 'Save positions to review later · Mark applications already submitted · Click a title to open SCOPE';
+  element('snapshot-info').title = element('snapshot-info').textContent ?? '';
   element('visible-range').textContent = mapView ? `${matches.length.toLocaleString()} filtered postings · Select a city to see its positions` : matches.length ? `Showing ${((page - 1) * preferences.pageSize + 1).toLocaleString()}–${Math.min(page * preferences.pageSize, matches.length).toLocaleString()} · Click a position to open in SCOPE` : 'Search and filter your saved collection';
   element('sort').closest('label')!.hidden = mapView; element('direction').closest('label')!.hidden = mapView; document.querySelector<HTMLElement>('.columns')!.hidden = mapView;
   const empty = element('empty'); empty.hidden = Boolean(snapshot && matches.length);
@@ -173,18 +238,20 @@ function render(): void {
   element('page-label').textContent = `Page ${page} of ${pages}`;
   const head = node('tr');
   for (const key of preferences.columns) {
-    const th = node('th'); th.scope = 'col';
+    const th = node('th'); th.scope = 'col'; th.dataset.column = key;
     if (preferences.sort === key) th.setAttribute('aria-sort', preferences.direction === 'asc' ? 'ascending' : 'descending');
     const button = node('button', columnLabels[key] + (preferences.sort === key ? preferences.direction === 'asc' ? ' ↑' : ' ↓' : ''));
+    button.dataset.sort = key;
     button.addEventListener('click', () => { preferences.direction = preferences.sort === key && preferences.direction === 'asc' ? 'desc' : 'asc'; preferences.sort = key; fillControls(); changed(); });
     th.append(button); head.append(th);
   }
-  const actionHead = node('th', ''); actionHead.scope = 'col'; actionHead.append(node('span', 'Your actions')); head.append(actionHead); element('headers').replaceChildren(head);
+  element('headers').replaceChildren(head);
   const fragment = document.createDocumentFragment();
   for (const row of matches.slice((page - 1) * preferences.pageSize, page * preferences.pageSize)) {
     const tr = node('tr'); if (isExpired(row.deadlineText)) tr.className = 'expired-posting';
     for (const key of preferences.columns) {
       const td = node('td'); td.dataset.column = key;
+      td.dataset.label = columnLabels[key];
       if (key === 'isNew' || key === 'shortlisted') { if (row[key]) { const badge = node('span', key === 'isNew' ? 'New' : 'Shortlisted'); badge.className = 'badge'; td.append(badge); } else td.textContent = '—'; }
       else if (key === 'jobTitle') {
         const link = node('a', positionTitle(row)); link.href = api.runtime.getURL(`posting.html?id=${encodeURIComponent(row.id)}`); link.target = '_blank'; link.rel = 'noopener'; link.setAttribute('aria-label', `Open ${positionTitle(row)} in a new tab`); td.append(link);
@@ -197,39 +264,73 @@ function render(): void {
       } else td.textContent = display(row, key) || '—';
       tr.append(td);
     }
-    const actions = node('td'); actions.className = 'actions-cell';
-    const saveButton = node('button', isSaved(row) ? 'Remove from Saved' : '☆ Save'); saveButton.className = isSaved(row) ? 'save-posting is-saved' : 'save-posting secondary'; saveButton.dataset.save = row.id; saveButton.disabled = saving.has(row.id); saveButton.setAttribute('aria-pressed', String(isSaved(row))); saveButton.setAttribute('aria-label', `${isSaved(row) ? 'Remove from Saved:' : 'Save'} ${positionTitle(row)} locally`);
-    saveButton.addEventListener('click', () => void toggleSaved(row)); actions.append(saveButton);
+    const saveButton = node('button', isSaved(row) ? savedMode ? 'Remove' : '✓ Saved' : '☆ Save'); saveButton.className = isSaved(row) ? 'save-posting is-saved' : 'save-posting secondary'; saveButton.dataset.save = row.id; saveButton.disabled = saving.has(row.id); saveButton.title = isSaved(row) ? 'Remove from Saved' : 'Save locally'; saveButton.setAttribute('aria-pressed', String(isSaved(row))); saveButton.setAttribute('aria-label', `${isSaved(row) ? 'Remove from Saved:' : 'Save'} ${positionTitle(row)} locally`);
+    saveButton.addEventListener('click', () => void toggleSaved(row));
+    const titleCell = tr.querySelector<HTMLTableCellElement>('[data-column="jobTitle"]')!;
+    const titleText = node('div'); titleText.className = 'posting-title'; titleText.append(...titleCell.childNodes);
+    const layout = node('div'); layout.className = 'posting-layout';
+    const saveTools = node('div'); saveTools.className = 'posting-tools'; saveTools.append(saveButton); layout.append(titleText, saveTools); titleCell.append(layout);
+    const menu = node('details'); menu.className = 'row-actions'; menu.dataset.id = row.id; menu.open = openActions.has(row.id);
+    const summary = node('summary', '⋯'); summary.dataset.rowActions = row.id; summary.title = 'Posting actions'; summary.setAttribute('aria-label', `Actions for ${positionTitle(row)}`); summary.setAttribute('aria-controls', `actions-${row.id}`);
+    const menuBody = node('div'); menuBody.className = 'row-action-options'; menuBody.id = `actions-${row.id}`; menuBody.setAttribute('popover', 'manual'); menuBody.setAttribute('aria-label', `Actions for ${positionTitle(row)}`); menu.append(summary, menuBody); saveTools.append(menu);
+    summary.addEventListener('click', event => { event.preventDefault(); if (menu.open) closeRowMenu(menu); else openRowMenu(menu); });
+    menu.addEventListener('toggle', () => { if (menu.isConnected) { if (menu.open) openRowMenu(menu); else closeRowMenu(menu); } });
     const applyButton = node('button', applied.has(row.id) ? '✓ Applied · Undo' : 'Mark applied'); applyButton.className = 'secondary'; applyButton.dataset.applied = row.id; applyButton.disabled = markingApplied.has(row.id); applyButton.setAttribute('aria-pressed', String(applied.has(row.id))); applyButton.setAttribute('aria-label', `${applied.has(row.id) ? 'Undo applied for' : 'Mark as already applied:'} ${positionTitle(row)} locally`);
-    applyButton.addEventListener('click', () => void toggleApplied(row)); actions.append(applyButton);
+    applyButton.addEventListener('click', () => void toggleApplied(row)); menuBody.append(applyButton);
     const toggle = node('button', expanded.has(row.id) ? 'Hide details' : 'Details'); toggle.className = 'secondary'; toggle.dataset.details = row.id; toggle.setAttribute('aria-expanded', String(expanded.has(row.id))); if (expanded.has(row.id)) toggle.setAttribute('aria-controls', `details-${row.id}`);
     toggle.addEventListener('click', () => { if (expanded.has(row.id)) expanded.delete(row.id); else expanded.add(row.id); render(); document.querySelector<HTMLButtonElement>(`button[data-details="${row.id}"]`)?.focus(); });
-    actions.append(toggle); tr.append(actions); fragment.append(tr); if (expanded.has(row.id)) fragment.append(details(row));
+    menuBody.append(toggle); fragment.append(tr); if (expanded.has(row.id)) fragment.append(details(row));
   }
   element('rows').replaceChildren(fragment); chips();
+  for (const menu of document.querySelectorAll<HTMLDetailsElement>('.row-actions[open]')) openRowMenu(menu);
+  if (focusedSort) document.querySelector<HTMLButtonElement>(`[data-sort="${focusedSort}"]`)?.focus();
+  else if (focusedId && rowFocus) focusRow(focusedId, rowFocus, focusedIndex);
+  else if (focusedMenu) document.querySelector<HTMLElement>(`[data-row-actions="${focusedMenu}"]`)?.focus();
 }
 async function toggleSaved(row: Posting): Promise<void> {
   if (saving.has(row.id)) return;
+  const restoreFocus = document.activeElement?.closest('tr')?.querySelector(`[data-save="${row.id}"]`);
+  const rowIndex = [...element('rows').children].filter(row => !row.classList.contains('expanded')).indexOf(document.querySelector(`[data-save="${row.id}"]`)!.closest('tr')!);
   saving.add(row.id); const next = !isSaved(row); render();
   try {
-    await request({ type: 'setSaved', id: row.id, saved: next });
-    if (next) { saved.set(row.id, { version: 1, savedAt: new Date().toISOString(), posting: row }); removedSaved.delete(row.id); }
-    else { saved.delete(row.id); removedSaved.add(row.id); }
+    const result = await request<{ undoToken?: string } | undefined>({ type: 'setSaved', id: row.id, saved: next });
+    if (next) { saved.set(row.id, { version: 1, savedAt: new Date().toISOString(), posting: row }); removedSaved.delete(row.id); if (lastRemoval?.id === row.id) dismissSavedFeedback(); }
+    else {
+      saved.delete(row.id); removedSaved.add(row.id);
+      if (result?.undoToken) {
+        dismissSavedFeedback(); lastRemoval = { id: row.id, token: result.undoToken };
+        element('saved-feedback').hidden = false; element('saved-message').textContent = `Removed ${positionTitle(row)} from Saved.`;
+        element<HTMLButtonElement>('undo-saved').disabled = false;
+        undoTimer = setTimeout(dismissSavedFeedback, 5 * 60_000);
+      }
+    }
     rebuildLibrary(); makeFacets();
     error();
   } catch (value) { error(value); }
-  finally { saving.delete(row.id); render(); document.querySelector<HTMLButtonElement>(`button[data-save="${row.id}"]`)?.focus(); }
+  finally { saving.delete(row.id); render(); if (restoreFocus && document.activeElement === document.body) focusRow(row.id, 'save', rowIndex); }
 }
 async function toggleApplied(row: Posting): Promise<void> {
   if (markingApplied.has(row.id)) return;
+  const restoreFocus = document.activeElement?.closest('tr')?.querySelector(`[data-applied="${row.id}"]`);
+  const rowIndex = [...element('rows').children].filter(row => !row.classList.contains('expanded')).indexOf(document.querySelector(`[data-applied="${row.id}"]`)!.closest('tr')!);
   markingApplied.add(row.id); const next = !applied.has(row.id); render();
   try {
     await request({ type: 'setApplied', id: row.id, applied: next });
     if (next) applied.set(row.id, { version: 1, appliedAt: new Date().toISOString(), posting: row }); else applied.delete(row.id);
     rebuildLibrary(); makeFacets(); error();
   } catch (value) { error(value); }
-  finally { markingApplied.delete(row.id); render(); document.querySelector<HTMLButtonElement>(`button[data-applied="${row.id}"]`)?.focus(); }
+  finally { markingApplied.delete(row.id); render(); if (restoreFocus && document.activeElement === document.body) focusRow(row.id, 'applied', rowIndex); }
 }
+element('dismiss-saved').addEventListener('click', dismissSavedFeedback);
+element('undo-saved').addEventListener('click', async () => {
+  const removal = lastRemoval; if (!removal) return;
+  const undo = element<HTMLButtonElement>('undo-saved'); undo.disabled = true;
+  try {
+    const record = await request<SavedPosting>({ type: 'undoSavedRemoval', ...removal });
+    saved.set(removal.id, record); removedSaved.delete(removal.id); rebuildLibrary(); makeFacets(); render();
+    if (lastRemoval === removal) { dismissSavedFeedback(); focusRow(removal.id, 'save'); } error();
+  } catch (value) { error(value); if (lastRemoval === removal) { undo.disabled = false; undo.focus(); } }
+});
 function reset(): void {
   const { sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines } = preferences;
   preferences = { ...defaults(), sort, direction, pageSize, columns, facetOrder, groupGreaterVancouver, relativeDeadlines }; fillControls(); makeFacets(true); changed();
@@ -259,11 +360,19 @@ element('previous').addEventListener('click', () => { page--; render(); }); elem
 for (const format of ['csv', 'json'] as const) element(format).addEventListener('click', () => { void request({ type: 'download', format }).catch(error); });
 element('list-view').addEventListener('click', () => { mapView = false; render(); });
 element('map-view').addEventListener('click', () => { mapView = true; render(); });
-const menus = [...document.querySelectorAll<HTMLDetailsElement>('.export-menu, .search-options, .columns')];
-document.addEventListener('click', event => { for (const menu of menus) if (!menu.contains(event.target as Node)) menu.open = false; });
+const menus = () => [...document.querySelectorAll<HTMLDetailsElement>('.export-menu, .search-options, .columns, .row-actions'), ...(compactMedia?.matches ? [document.querySelector<HTMLDetailsElement>('.result-options')!] : [])];
+document.addEventListener('click', event => { const target = event.target as Node; if (!target.isConnected) return; for (const menu of menus()) if (!menu.contains(target)) { if (menu.classList.contains('row-actions')) closeRowMenu(menu); else menu.open = false; } });
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
-  for (const menu of menus) if (menu.open) { menu.open = false; menu.querySelector('summary')?.focus(); }
+  if (filterDialog.open) return;
+  const active = document.activeElement;
+  const opened = menus().filter(menu => menu.open).sort((a, b) => a.contains(b) ? 1 : b.contains(a) ? -1 : 0);
+  const focused = opened.find(menu => menu.contains(active)) ?? opened[0];
+  if (focused) {
+    event.preventDefault();
+    for (const menu of opened) if (menu === focused || !menu.contains(focused)) { if (menu.classList.contains('row-actions')) closeRowMenu(menu); else menu.open = false; }
+    focused.querySelector('summary')?.focus();
+  }
 });
 
 async function load(initial = false): Promise<void> {
@@ -283,7 +392,6 @@ async function load(initial = false): Promise<void> {
   } catch (value) { if (revision === loadRevision) { snapshot = undefined; libraryPostings = []; index = []; render(); error(value); } }
 }
 fillControls();
-if (window.matchMedia?.('(max-width: 900px)').matches) element<HTMLDetailsElement>('filter-panel').open = false;
 // Register after starting the initial read. A newer event invalidates that read.
 void load(true);
 api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && (Object.hasOwn(changes, 'snapshot') || Object.keys(changes).some(key => (key.startsWith(savedPrefix) || key.startsWith(appliedPrefix) || key.startsWith(removedSavedPrefix))))) void load(); });

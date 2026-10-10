@@ -53,6 +53,7 @@ export type Command =
   | { type: 'getLibrary' }
   | { type: 'setApplied'; id: string; applied: boolean }
   | { type: 'setSaved'; id: string; saved: boolean }
+  | { type: 'undoSavedRemoval'; id: string; token: string }
   | { type: 'getState'; tabId: number }
   | { type: 'start'; tabId: number }
   | { type: 'cancel'; tabId: number }

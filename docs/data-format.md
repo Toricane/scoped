@@ -45,6 +45,8 @@ Both formats download as scope-postings-<collection timestamp>.<csv|json>, with 
 
 ## Local storage and refresh
 
+Saved removal records may include a temporary `undo` payload containing an opaque token, a millisecond expiry timestamp, and a validated version-1 Saved record. Undo is available for five minutes and restores a local save; it does not change SCOPE or raw exports. The background strips this payload from library replies, rejects stale/expired tokens, and discards expired undo copies when reading the library. Persistent exclusions remain compatible with older records lacking this payload. Temporary undo copies do not establish opener membership.
+
 - `snapshot`: one latest complete schema-1 snapshot shared by all popup/viewer openings.
 - `run:<tabId>`: run ID, source tab/URL, status, start time, message, current page, unique collected count, and total. Status is running, canceling, complete, canceled, or error.
 - `viewerPreferences:v1`: versioned search/filter/sort/page-size/column preferences, separate from posting data.

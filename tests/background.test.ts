@@ -42,6 +42,39 @@ beforeEach(async () => {
 });
 
 describe('background lifecycle and persisted transitions', () => {
+  it('undoes retained Saved removal through a validated, single-use token without SCOPE navigation', async () => {
+    const posting = parsePage(document).postings[0];
+    data['saved:1001'] = { version: 1, savedAt: '2026-10-10T00:00:00Z', posting };
+    const removed = await send({ type: 'setSaved', id: '1001', saved: false });
+    const token = removed.ok && removed.value.undoToken;
+    expect(typeof token).toBe('string'); expect(data['saved:1001']).toBeUndefined();
+    expect(await send({ type: 'undoSavedRemoval', id: '1001', token }, sourceSender)).toMatchObject({ ok: false });
+    expect(await send({ type: 'undoSavedRemoval', id: '1001', token: 'wrong' })).toMatchObject({ ok: false });
+    expect(await send({ type: 'undoSavedRemoval', id: '1001', token })).toMatchObject({ ok: true, value: { posting: { id: '1001' } } });
+    expect(data['saved:1001']).toMatchObject({ savedAt: '2026-10-10T00:00:00Z' }); expect(data['savedRemoved:1001']).toBeUndefined();
+    expect(await send({ type: 'undoSavedRemoval', id: '1001', token })).toMatchObject({ ok: false });
+    expect(mock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+  it('rejects stale, expired and malformed undo copies, keeping persistent removals', async () => {
+    data.snapshot = { postings: parsePage(document).postings };
+    const first = await send({ type: 'setSaved', id: '1001', saved: false });
+    const second = await send({ type: 'setSaved', id: '1001', saved: false });
+    expect(await send({ type: 'undoSavedRemoval', id: '1001', token: first.ok && first.value.undoToken })).toMatchObject({ ok: false });
+    const removal = data['savedRemoved:1001'] as any;
+    removal.undo.record.posting.id = '1002';
+    expect(await send({ type: 'undoSavedRemoval', id: '1001', token: second.ok && second.value.undoToken })).toMatchObject({ ok: false });
+    removal.undo.expiresAt = 0;
+    expect(await send({ type: 'undoSavedRemoval', id: '1001', token: second.ok && second.value.undoToken })).toMatchObject({ ok: false });
+    await send({ type: 'getLibrary' });
+    expect(data['savedRemoved:1001']).toMatchObject({ id: '1001' }); expect((data['savedRemoved:1001'] as any).undo).toBeUndefined();
+  });
+  it('uses latest captured fields when undoing a shortlist removal', async () => {
+    const postings = parsePage(document).postings; data.snapshot = { postings };
+    const reply = await send({ type: 'setSaved', id: '1001', saved: false });
+    postings[0] = { ...postings[0], organization: 'Updated organization' };
+    expect(await send({ type: 'undoSavedRemoval', id: '1001', token: reply.ok && reply.value.undoToken })).toMatchObject({ ok: true, value: { posting: { organization: 'Updated organization' } } });
+    expect(postings[0].shortlisted).toBe(true);
+  });
   it('saves locally, keeps records when the snapshot changes, and removes only the requested save', async () => {
     const postings = parsePage(document).postings;
     data.snapshot = { schemaVersion: 1, sourceUrl: SOURCE_URL, collectedAt: new Date().toISOString(), reportedTotal: 3, postings };

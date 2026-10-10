@@ -26,7 +26,7 @@ function render(): void {
   start.textContent = snapshot ? 'Refresh collection' : 'Start collection';
   cancel.disabled = !active || pending || run?.status === 'canceling';
   csv.disabled = json.disabled = !snapshot;
-  element('source-hint').textContent = tabId === undefined ? 'Open SCOPE search results to collect or refresh. Your saved postings are ready to view above.' : 'Collect every page of this search. Your SCOPE filters stay in place.';
+  element('source-hint').textContent = tabId === undefined ? 'Open SCOPE search results to collect or refresh. View your collection or local libraries above.' : 'Collect every page of this search. Your SCOPE filters stay in place.';
   element('status').textContent = run?.message ?? (tabId === undefined ? 'Collection needs an open SCOPE results tab.' : 'Ready to collect your current search.');
   element('status').hidden = (!run && tabId === undefined) || run?.status === 'complete';
   element('progress').hidden = !active;
@@ -35,7 +35,7 @@ function render(): void {
   const progress = element<HTMLProgressElement>('progress');
   progress.max = Math.max(1, run?.total ?? 1);
   progress.value = run?.status === 'complete' && run.total === 0 ? 1 : run?.collected ?? 0;
-  element('snapshot').textContent = snapshot ? `${snapshot.postings.length.toLocaleString()} postings · Collected ${new Date(snapshot.collectedAt).toLocaleString()}` : 'No snapshot saved yet.';
+  element('snapshot').textContent = snapshot ? `${snapshot.postings.length.toLocaleString()} postings · Collected ${new Date(snapshot.collectedAt).toLocaleString()}` : 'No collection yet.';
 }
 
 async function refresh(): Promise<void> {

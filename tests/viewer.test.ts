@@ -8,13 +8,16 @@ import { loadFixture } from './helpers';
 let stored: Record<string, unknown>, get: ReturnType<typeof vi.fn>, set: ReturnType<typeof vi.fn>, onChanged: ReturnType<typeof vi.fn>, sendMessage: ReturnType<typeof vi.fn>;
 let snapshot: Snapshot;
 let savedRecords: Record<string, unknown>;
-afterEach(() => vi.unstubAllGlobals());
+let cleanupDocumentListeners: (() => void) | undefined;
+afterEach(() => { cleanupDocumentListeners?.(); vi.unstubAllGlobals(); });
 beforeEach(() => {
   vi.resetModules(); loadFixture();
   snapshot = { schemaVersion: 1, sourceUrl: SOURCE_URL, collectedAt: '2026-10-10T00:00:00Z', reportedTotal: 3, postings: parsePage(document).postings };
   stored = { snapshot };
   savedRecords = {};
   document.body.innerHTML = new DOMParser().parseFromString(readFileSync('viewer.html', 'utf8'), 'text/html').body.innerHTML;
+  const listenerSpy = vi.spyOn(document, 'addEventListener');
+  cleanupDocumentListeners = () => { for (const [type, listener, options] of listenerSpy.mock.calls) document.removeEventListener(type, listener, options); listenerSpy.mockRestore(); };
   get = vi.fn(async keys => Object.fromEntries(keys.map((key: string) => [key, stored[key]])));
   set = vi.fn(async items => { Object.assign(stored, items); }); onChanged = vi.fn(); sendMessage = vi.fn(async (command: any) => {
     if (command.type === 'getLibrary') return { ok: true, value: savedRecords };
@@ -35,6 +38,46 @@ const rows = () => document.querySelectorAll('#rows tr:not(.expanded)');
 async function open(): Promise<void> { await import('../src/viewer'); await vi.waitFor(() => expect(document.getElementById('snapshot-info')!.textContent).not.toContain('Loading')); }
 function change(id: string, value: string): void { control(id).value = value; control(id).dispatchEvent(new Event(id === 'query' ? 'input' : 'change')); }
 describe('local viewer', () => {
+  it('keeps focus on sorted headers and returns chip removal to search', async () => {
+    await open();
+    const header = document.querySelector<HTMLButtonElement>('[data-sort="jobTitle"]')!; header.focus(); header.click();
+    expect((document.activeElement as HTMLElement).dataset.sort).toBe('jobTitle');
+    const details = document.querySelector<HTMLButtonElement>('[data-details]')!;
+    details.closest<HTMLDetailsElement>('.row-actions')!.open = true; details.focus(); details.click();
+    expect((document.activeElement as HTMLElement).dataset.details).toBeTruthy();
+    expect(document.activeElement!.closest<HTMLDetailsElement>('.row-actions')!.open).toBe(true);
+    change('query', 'python'); await vi.waitFor(() => expect(rows()).toHaveLength(1));
+    const chip = document.querySelector<HTMLButtonElement>('#chips button')!; chip.focus(); chip.click();
+    expect(document.activeElement).toBe(control('query'));
+  });
+  it('dismisses a nested Columns menu without hiding its focused summary', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn() }));
+    await open();
+    const options = document.querySelector<HTMLDetailsElement>('.result-options')!; options.open = true;
+    const columns = document.querySelector<HTMLDetailsElement>('.columns')!; columns.open = true;
+    columns.querySelector<HTMLInputElement>('input:not(:disabled)')!.focus();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(columns.open).toBe(false); expect(options.open).toBe(true);
+    expect(document.activeElement).toBe(columns.querySelector('summary'));
+  });
+  it('focuses the next Saved row after removal and restores the removed row through Undo', async () => {
+    vi.stubGlobal('location', { href: 'chrome-extension://scoped/viewer.html?view=saved' });
+    snapshot.postings[1].shortlisted = true; await open();
+    const removedId = document.querySelector<HTMLButtonElement>('[data-save]')!.dataset.save!;
+    const posting = snapshot.postings.find(row => row.id === removedId)!;
+    const originalSend = sendMessage.getMockImplementation() as (command: any) => Promise<any>;
+    sendMessage.mockImplementation(async command => {
+      if (command.type === 'undoSavedRemoval') { delete savedRecords['savedRemoved:' + command.id]; const record = { version: 1, savedAt: snapshot.collectedAt, posting }; savedRecords['saved:' + command.id] = record; return { ok: true, value: record }; }
+      const result = await originalSend(command); return command.type === 'setSaved' && !command.saved ? { ok: true, value: { undoToken: 'test-token' } } : result;
+    });
+    const remove = document.querySelector<HTMLButtonElement>(`[data-save="${removedId}"]`)!; remove.focus(); remove.click();
+    await vi.waitFor(() => expect(rows()).toHaveLength(1));
+    await vi.waitFor(() => expect((document.activeElement as HTMLElement).dataset.save).toBeTruthy());
+    expect((document.activeElement as HTMLElement).dataset.save).not.toBe(removedId);
+    control('undo-saved').click(); await vi.waitFor(() => expect(rows()).toHaveLength(2));
+    expect(sendMessage).toHaveBeenCalledWith({ type: 'undoSavedRemoval', id: removedId, token: 'test-token' });
+    expect(document.getElementById('saved-feedback')!.hidden).toBe(true); expect(posting.shortlisted).toBe(true);
+  });
   it('saves locally, syncs another tab, and removes the save without changing SCOPE flags', async () => {
     snapshot.postings[0].shortlisted = false; await open(); const original = snapshot.postings[0].shortlisted;
     document.querySelector<HTMLButtonElement>('[data-save="1001"]')!.click();
@@ -98,9 +141,11 @@ describe('local viewer', () => {
     snapshot.postings[0].jobTitle = '<img src=x onerror=alert(1)> Full title';
     await open(); expect(rows()).toHaveLength(3); expect(document.querySelector('#rows img')).toBeNull();
     expect(document.querySelector<HTMLAnchorElement>('#rows a')!.href).toBe('chrome-extension://scoped/posting.html?id=1001');
-    expect(document.querySelector('#rows .actions-cell a')).toBeNull();
+    expect(document.querySelector('.actions-cell')).toBeNull();
+    expect(document.querySelector('#rows [data-column="jobTitle"] [data-save]')).not.toBeNull();
     document.querySelector<HTMLButtonElement>('button[data-details="1001"]')!.click();
     expect(document.getElementById('details-1001')!.textContent).toContain('<img src=x onerror=alert(1)> Full title');
+    expect(document.querySelector<HTMLTableCellElement>('#details-1001 td')!.colSpan).toBe(document.querySelectorAll('#headers th').length);
     control('csv').click(); await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith({ type: 'download', format: 'csv' }));
   });
   it('hyperlinks cleaned position text even in older snapshots without link metadata', async () => {
@@ -110,7 +155,7 @@ describe('local viewer', () => {
     expect(title.textContent).toBe('W27 Backend Engineer — Python + FastAPI');
     expect(title.target).toBe('_blank');
     expect(title.href).toBe('chrome-extension://scoped/posting.html?id=1001');
-    expect(document.querySelector('#rows .actions-cell button[data-details]')!.textContent).toBe('Details');
+    expect(document.querySelector('#rows [data-column="jobTitle"] button[data-details]')!.textContent).toBe('Details');
   });
   it('restores preferences, filters instantly, persists changes, and resets filters', async () => {
     stored[preferencesKey] = { ...defaults(), query: 'research', columns: ['jobTitle', 'id'] };
@@ -193,7 +238,7 @@ it('removes SCOPE shortlist entries from Saved persistently without changing the
   vi.stubGlobal('location', { href: 'chrome-extension://scoped/viewer.html?view=saved' });
   await open(); expect(rows()).toHaveLength(1);
   const remove = document.querySelector<HTMLButtonElement>('[data-save="1001"]')!;
-  expect(remove.textContent).toBe('Remove from Saved'); expect(document.body.textContent).not.toContain('Keep locally');
+  expect(remove.getAttribute('aria-label')).toContain('Remove from Saved:'); expect(document.body.textContent).not.toContain('Keep locally');
   remove.click(); await vi.waitFor(() => expect(rows()).toHaveLength(0));
   expect(snapshot.postings[0].shortlisted).toBe(true);
   onChanged.mock.calls[0][0]({ snapshot: {} }, 'local');
@@ -204,7 +249,7 @@ it('restores an excluded shortlist entry through Save in All postings', async ()
   savedRecords['savedRemoved:1001'] = { version: 1, id: '1001', removedAt: snapshot.collectedAt };
   await open(); expect(document.querySelector('[data-save="1001"]')!.textContent).toContain('Save');
   document.querySelector<HTMLButtonElement>('[data-save="1001"]')!.click();
-  await vi.waitFor(() => expect(document.querySelector('[data-save="1001"]')!.textContent).toBe('Remove from Saved'));
+  await vi.waitFor(() => expect(document.querySelector('[data-save="1001"]')!.getAttribute('aria-pressed')).toBe('true'));
   expect(savedRecords['savedRemoved:1001']).toBeUndefined();
 });
 
