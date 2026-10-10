@@ -49,6 +49,8 @@ export interface RunState extends Progress {
 }
 
 export type Command =
+  | { type: 'downloadBackup' }
+  | { type: 'restoreBackup'; text: string }
   | { type: 'getSaved' }
   | { type: 'getLibrary' }
   | { type: 'setApplied'; id: string; applied: boolean }

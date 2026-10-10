@@ -1,6 +1,6 @@
 # Data format and local storage
 
-The authoritative TypeScript contract is `src/types.ts`; serialization is in `src/export.ts`. The viewer uses the stored snapshot directly. CSV/JSON import is not implemented.
+The authoritative TypeScript contract is `src/types.ts`; collection serialization is in `src/export.ts`. The viewer uses the stored snapshot directly. Collection CSV/JSON import is not implemented; full Scoped backup restore is separate.
 
 ## Snapshot JSON
 
@@ -65,7 +65,7 @@ There is no history, scheduling, external server, telemetry, or upload. Storage 
 
 `viewerPreferences:saved:v1` holds the Saved tab's preferences independently of All postings. Saved rendering unions current SCOPE-shortlisted rows with local retained records, excluding Applied and locally removed IDs; it combines current values with retained records and validates each record before display. Opening supports current-snapshot membership or a valid Saved/Applied record. Retention is one current captured copy per saved ID, not collection-version history. Invalid records are left stored but excluded from display.
 
-Current CSV/JSON exports do not include local Saved/Applied libraries or annotations. Backup/import for Saved is proposed in the [feature roadmap](features-roadmap.md). Browser-profile loss/uninstall or temporary Firefox storage loss can lose local saves.
+Current collection CSV/JSON exports do not include local Saved/Applied libraries. Full backup/restore includes these records; see below. Browser-profile loss/uninstall or temporary Firefox storage loss can lose local saves.
 
 The globe derives approximate city coordinates in memory from packaged public geography. No coordinate fields are added to Posting, raw exports, or snapshot schema. Geography JSON files are ignored generated assets prepared by the build and bundled into the extension, not extension storage; no private posting data is placed in them. See [geography reference](geography.md).
 
@@ -88,3 +88,11 @@ savedRemoved:<id> holds `{ version: 1, id: <numeric string>, removedAt: <ISO tim
 relativeDeadlines defaults to false in each view’s version-1 preferences and is retained by Clear filters. It changes table presentation of future deadlines within fourteen local calendar days only; original deadlineText, deadline filtering/sorting, and exports remain unchanged.
 
 Viewer version-1 preferences accept scope values all, title, organization, division, location and id; missing/invalid scopes default to all. Older all/title preferences remain compatible. Company-search return history is held only in the open viewer and adds no storage or export fields.
+
+## Full Scoped backup (0.7.0)
+
+`src/backup.ts` defines a separate JSON envelope: `{ format: "scoped-backup", version: 1, exportedAt: <ISO timestamp>, data: <key/value object> }`. Downloads are named `scoped-backup-<timestamp>.json`, pretty-printed with a final newline. File size is limited to 25 MB for download/restore. This is not a schema-1 collection export; raw collection CSV/JSON formats remain unchanged.
+
+Only snapshot, saved:<id>, applied:<id>, savedRemoved:<id>, viewerPreferences:v1, viewerPreferences:saved:v1 and viewerPreferences:applied:v1 are portable. Library keys/IDs/timestamps/Posting fields and snapshot invariants are validated before use. Export refuses invalid durable records instead of silently losing them. Posting/snapshot fields are explicitly copied; unknown nested fields and temporary removal undo payloads are stripped. Preferences use the existing version-1 reader/defaults, including all three views even when unopened. Unsupported preference versions and unknown nonempty top-level data keys are rejected. No run state, SCOPE session, permission grants or semantic cache is restored.
+
+Restore is an explicit merge: incoming snapshot/preferences replace matching values; an absent snapshot preserves the destination snapshot. Every incoming library ID restores its complete Saved/Applied/removal combination. Missing counterpart keys for that ID are written as null in the same storage.set, so an older destination removal/mark cannot override the restored state. Existing readers ignore null; exports omit it. Destination IDs absent from the backup remain. Validation and active-collection checks precede the single serialized background write. Invalid input/storage failures never clear the destination. Reopen viewers to load restored preferences. See [backup and distribution](distribution.md).

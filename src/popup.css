@@ -45,3 +45,6 @@ code { overflow-wrap: anywhere; }
   #error { color: #ffbdbd; background: #432c35; }
 }
 .saved-launch{margin-top:8px}
+.posting-page input[type="file"] { display: block; max-width: 100%; margin: 8px 0 12px; font: inherit; }
+.posting-page main { padding: 16px; }
+.posting-page .actions { flex-wrap: wrap; }

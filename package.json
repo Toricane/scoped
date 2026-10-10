@@ -1,12 +1,13 @@
 {
   "name": "scoped",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
+    "package:release": "npm run build && npm run validate && node scripts/package-release.mjs",
     "build": "tsc --noEmit && node scripts/build.mjs",
     "test": "vitest run",
     "check": "tsc --noEmit",
@@ -14,6 +15,7 @@
     "setup:maps": "node scripts/update-geodata.mjs",
     "setup:search": "node scripts/setup-search.mjs",
     "test:semantic:browser": "node scripts/test-semantic-browser.mjs",
+    "test:backup:browser": "node scripts/test-backup-browser.mjs",
     "update:maps": "node scripts/update-geodata.mjs --refresh"
   },
   "devDependencies": {

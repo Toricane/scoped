@@ -1,5 +1,6 @@
 import { api } from './api';
-import { saveSnapshot } from './download';
+import { saveSnapshot, saveText } from './download';
+import { backupLimit, createBackup, parseBackup, restoreBackup } from './backup';
 import { navigatePostingTab } from './posting-navigation';
 import { readRemovedSaved, removedSavedKey, readApplied, appliedKey, readSaved, savedKey } from './saved';
 import { commitSnapshot, isActive, readState, runKey } from './store';
@@ -20,6 +21,12 @@ async function failTab(tabId: number, message: string): Promise<void> {
 }
 
 async function handle(command: Command, sender: chrome.runtime.MessageSender): Promise<unknown> {
+  if (command.type === 'restoreBackup') {
+    if (sender.id !== api.runtime.id || sender.url !== api.runtime.getURL('backup.html')) throw new Error('Restore backups from Scoped’s backup page.');
+    if (typeof command.text !== 'string') throw new Error('Invalid backup request.');
+    await restoreBackup(api.storage.local, parseBackup(command.text));
+    return;
+  }
   if (command.type === 'getSaved' || command.type === 'getLibrary' || command.type === 'setSaved' || command.type === 'setApplied' || command.type === 'undoSavedRemoval') {
     if (!sender.url?.startsWith(api.runtime.getURL(''))) throw new Error('Manage saved postings from Scoped.');
     if (command.type === 'getSaved' || command.type === 'getLibrary') {
@@ -172,7 +179,13 @@ api.runtime.onMessage.addListener((command: Command, sender, sendResponse) => {
   if (command.type === 'collect' || command.type === 'abort' || command.type === 'collectorStatus') return false;
   // Save dialogs can outlive the popup. Do not block collector/storage updates
   // in the serialized run queue while the user chooses a download location.
-  const task = command.type === 'download' ? (async () => {
+  const task = command.type === 'downloadBackup' ? (async () => {
+    if (sender.id !== api.runtime.id || sender.url !== api.runtime.getURL('backup.html')) throw new Error('Download backups from Scoped’s backup page.');
+    const backup = await serial(async () => createBackup(await api.storage.local.get(null)));
+    const text = JSON.stringify(backup, null, 2) + '\n';
+    if (new TextEncoder().encode(text).byteLength > backupLimit) throw new Error('Backup exceeds the 25 MB restore limit.');
+    return saveText(api.downloads, text, `scoped-backup-${backup.exportedAt.replace(/[:.]/g, '-')}.json`);
+  })() : command.type === 'download' ? (async () => {
     if (!sender.url?.startsWith(api.runtime.getURL(''))) throw new Error('Download from the extension popup.');
     const { snapshot } = await readState(api.storage.local, -1);
     if (!snapshot) throw new Error('Collect postings before downloading a snapshot.');

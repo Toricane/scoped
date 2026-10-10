@@ -15,11 +15,16 @@ export function downloadOptions(snapshot: Snapshot, format: 'csv' | 'json'): chr
 
 export async function saveSnapshot(downloads: Pick<typeof chrome.downloads, 'download' | 'search' | 'onChanged'>, snapshot: Snapshot, format: 'csv' | 'json'): Promise<number> {
   const options = downloadOptions(snapshot, format);
+  const text = format === 'csv' ? toCsv(snapshot) : toJson(snapshot);
+  return saveText(downloads, text, options.filename!, format === 'csv' ? 'text/csv' : 'application/json');
+}
+
+export async function saveText(downloads: Pick<typeof chrome.downloads, 'download' | 'search' | 'onChanged'>, text: string, filename: string, mime = 'application/json'): Promise<number> {
+  const options = { url: `data:${mime};charset=utf-8,${encodeURIComponent(text)}`, filename, saveAs: true };
   // Firefox rejects data URLs in downloads.download (Mozilla bug 1318564), but
   // its event-page background supports blobs. Never create a blob in the popup.
   if (typeof URL.createObjectURL !== 'function') return downloads.download(options);
-  const text = format === 'csv' ? toCsv(snapshot) : toJson(snapshot);
-  const url = URL.createObjectURL(new Blob([text], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json' }));
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
   let release: ((delta: chrome.downloads.DownloadDelta) => void) | undefined;
   try {
     const id = await downloads.download({ ...options, url });

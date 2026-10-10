@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Scoped: Backup & restore</title><link rel="icon" type="image/png" sizes="32x32" href="/icons/scoped-32.png"></head>
+<body class="posting-page"><main>
+  <header><img src="/icons/scoped-96.png" width="44" height="44" alt=""><div><h1>Backup & restore</h1><p>Keep a portable copy of your Scoped data.</p></div></header>
+  <section aria-labelledby="download-heading"><h2 id="download-heading">Full backup</h2><p>Includes your latest collection, local Saved and Applied records, Saved removals, and preferences for all three views.</p><button id="download-backup">Download full backup</button><p class="muted">Keep this file private: it contains your posting data and local choices. Search caches, collection progress, and temporary Undo actions are excluded.</p></section>
+  <section aria-labelledby="restore-heading"><h2 id="restore-heading">Restore a backup</h2><p>Choose a full Scoped backup JSON file, up to 25 MB. Collection CSV/JSON exports cannot be restored here.</p><label for="backup-file">Backup file</label><input id="backup-file" type="file" accept=".json,application/json">
+    <div id="restore-review" hidden><p id="backup-summary"></p><p id="backup-date"></p><p>The backed-up collection and preferences replace matching current values. Local Saved, Applied, and removal records are replaced for included IDs; other IDs remain. A backup without a collection keeps your current collection.</p><p>Download a full backup of your current data before restoring. Finish or cancel any collection first, then reopen viewer tabs after restore to load the restored preferences.</p><div class="actions"><button id="confirm-restore">Restore this backup</button><button id="cancel-restore" class="secondary">Cancel</button></div></div>
+  </section>
+  <p id="backup-status" role="status" aria-live="polite"></p><p id="error" role="alert" hidden></p>
+  <footer>Stored locally · No uploads</footer>
+</main><script type="module" src="/src/backup-page.ts"></script></body></html>

@@ -68,6 +68,10 @@ Wait for tabs.update acknowledgement and inspect current tab state rather than t
 
 ## Packaging and changes
 
+`npm run package:release` preserves the ordinary build workflow, runs build/validate and creates verified Firefox/Chrome ZIPs, an allowlisted source ZIP and checksums in ignored `release/<version>/`. It does not sign or upload. See [distribution](distribution.md) for reviewer build instructions and unlisted signing.
+
+`src/backup.ts` defines version-1 full backup validation/canonicalization and merge restore. `backup.html` / `src/backup-page.ts` provide a persistent tab with file review and explicit confirmation, launched from the popup's collapsed Backup & restore disclosure. `downloadBackup` and `restoreBackup` require the same runtime sender ID and exact backup-page URL. Backup reads share the storage queue; the download dialog stays outside it. Restore revalidates in the background, blocks active runs, and uses one storage.set for snapshot/preferences and each included ID's complete local state. Absent counterpart records become null (all existing validated readers ignore them); no storage.clear/remove window is introduced. Unmentioned local IDs remain. Undo/run/cache/unknown fields never enter backups. `npm run test:backup:browser` exercises synthetic restore and restart in an isolated profile, not the user's Firefox migration.
+
 Both packages use Manifest V3 and exactly four API permissions plus the SCOPE host. Firefox 142+ uses background.scripts; Chrome 120+ uses a background service_worker. The toolbar uses popup.html; viewer.html and posting.html are local pages. Assets are bundled; no remote libraries are loaded.
 
 Popup, viewer and posting pages declare the packaged 32px PNG favicon for browser tabs. Scoped-authored titles use a colon instead of an em dash, and blank-field placeholders use a plain hyphen. Captured posting text and raw exports are preserved. Package validation checks tab-icon declarations/assets and title punctuation.

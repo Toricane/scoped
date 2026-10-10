@@ -82,3 +82,4 @@ void initialize();
 mountSiteAccess(element('site-access'), initialize);
 
 element('view-applied').addEventListener('click', () => { void api.tabs.create({ url: api.runtime.getURL('viewer.html?view=applied') }).catch(showError); });
+element('backup').addEventListener('click', () => { void api.tabs.create({ url: api.runtime.getURL('backup.html') }).catch(showError); });

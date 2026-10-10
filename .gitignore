@@ -1,5 +1,7 @@
 node_modules/
 dist/
+release/
+scoped-backup-*.json
 coverage/
 *.zip
 *.csv

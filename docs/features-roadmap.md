@@ -12,7 +12,7 @@ Pair this with a Compare view for two to four Saved positions. Align organizatio
 
 Attach personal notes, reasons to apply, questions to research, and user-defined tags to posting IDs. Use explicit local statuses such as To review, Interested, Researching, and Passed, complementing the existing Applied mark. A reversible Hide action can remove passed positions from the ordinary list without losing them. Never update SCOPE or infer an application submission from clicking a title.
 
-Saved backup/restore should accompany this: local annotations need a portable JSON export separate from raw SCOPE CSV/JSON. Browser-profile/temporary-install storage should not be the only copy of a personal decision log.
+Full collection/library/preferences backup and restore is implemented in 0.7.0, separately from raw SCOPE CSV/JSON. Future annotations should extend that portable format. Browser-profile/temporary-install storage should not be the only copy of a personal decision log.
 
 ## 3. Named searches and keyword highlighting
 

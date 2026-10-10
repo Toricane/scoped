@@ -44,7 +44,7 @@ for (const browser of ['firefox', 'chrome']) {
     const code = await readFile(new URL(name, root), 'utf8');
     assert(!/^import\s/m.test(code), `${name} must be self-contained`);
   }
-  for (const page of ['popup', 'viewer', 'posting']) {
+  for (const page of ['popup', 'viewer', 'posting', 'backup']) {
     const html = await readFile(new URL(`${page}.html`, root), 'utf8');
     assert(/<link\b[^>]*rel="icon"[^>]*href="(?:\.\/)?icons\/scoped-32\.png"/.test(html) || /<link\b[^>]*rel="icon"[^>]*href="\/icons\/scoped-32\.png"/.test(html), `${page}: packaged tab icon is missing`);
     assert(!html.match(/<title>[^<]*—/), `${page}: interface tab title contains an em dash`);

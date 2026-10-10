@@ -22,7 +22,9 @@ The first build prepares offline maps and the local semantic-search model and ne
 2. Choose **Load Temporary Add-on…** and select `dist/firefox/manifest.json`.
 3. Pin Scoped through the extensions menu if desired.
 
-Temporary installs disappear after restarting Firefox. Load it again after restart; download snapshots you need to keep rather than relying on temporary-install storage. Persistent Firefox installation requires signing/distribution, which is deferred.
+Temporary installs disappear after restarting Firefox. Load it again after restart; keep full backups rather than relying on temporary-install storage. Persistent Firefox installation requires a Mozilla-signed package.
+
+Full backup/restore and release packaging are now available; Mozilla signing and store publication require submission. Keep the existing temporary add-on while testing. Before switching, reload the build, then open **Backup & restore** in the popup and download a **full backup**. See [backup and distribution](docs/distribution.md) for migration and unlisted signing instructions. `npm run package:release` builds/validates both browsers and creates submission/source ZIPs plus checksums in `release/<version>/`.
 
 ### Chrome
 
@@ -108,7 +110,7 @@ Circle area is proportional to the filtered posting count. Hover or keyboard-foc
 
 City matching is entirely offline using bundled geography. Pins represent approximate city centres. Ambiguous names, broad labels like Various Locations, and absent places remain in a selectable **Unmapped locations** list. See [geography reference](docs/geography.md).
 
-Saved/Applied records remain browser-local. CSV/JSON export the latest SCOPE collection, not these libraries. Uninstalling or losing temporary-install storage may lose the libraries. Backup/import remains proposed; see [future features](docs/features-roadmap.md).
+Saved/Applied records remain browser-local. Collection CSV/JSON export the latest SCOPE collection, not these libraries. **Backup & restore** in the popup opens a separate tab for a full backup of collection, libraries, removals and preferences. Choose a full backup JSON to review its contents before restoring. Matching backed-up values replace current values while other local IDs remain; back up the destination first and reopen viewer tabs after restore. Uninstalling or losing temporary-install storage may lose data. See [migration instructions](docs/distribution.md).
 
 ## Troubleshooting
 
@@ -127,9 +129,11 @@ Exports preserve IDs, full source titles, organizations, divisions, locations, t
 
 Only table data is available: descriptions, salaries, and requirements are not collected. One complete snapshot is kept; refresh replaces it only on success. Counts/ranges catch detectable changes but cannot guarantee an atomic snapshot if live postings change without changing the total.
 
-Imports, filtered exports, named saved searches, notes, history, scheduling, ranking, and extension-store publication are deferred.
+Collection CSV/JSON imports, filtered exports, named saved searches, notes, history, scheduling, ranking, and extension-store publication are deferred. Full Scoped backup JSON restore is supported separately from collection exports.
 
 ## Project documentation and verification
+
+Version 0.7.0 adds full backup/restore and release archives while preserving temporary-add-on builds. Mozilla signing/publication and live Firefox migration remain pending; follow [backup and distribution](docs/distribution.md) before changing installations.
 
 Start at the [documentation index](docs/README.md). Contributors use the [development guide](docs/development.md); AI coding agents start with [AGENTS.md](AGENTS.md). The [page reference](docs/scope-page-structure.md) describes inspected SCOPE markup, and [acceptance status](docs/acceptance.md) separates automated evidence from live checks. [Icon documentation](docs/icon.md) records the approved artwork.
 

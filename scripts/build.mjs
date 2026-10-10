@@ -10,7 +10,7 @@ await ensureGeography(root);
 await ensureSemanticAssets(root);
 const staging = resolve(root, 'dist/shared');
 await rm(resolve(root, 'dist'), { recursive: true, force: true });
-await build({ root, base: './', worker: { format: 'es', rollupOptions: { external: ['@huggingface/transformers'], output: { paths: { '@huggingface/transformers': '../runtime/transformers.min.js' } } } }, build: { outDir: staging, emptyOutDir: true, rollupOptions: { input: ['popup', 'viewer', 'posting'].map(page => resolve(root, `${page}.html`)) } } });
+await build({ root, base: './', worker: { format: 'es', rollupOptions: { external: ['@huggingface/transformers'], output: { paths: { '@huggingface/transformers': '../runtime/transformers.min.js' } } } }, build: { outDir: staging, emptyOutDir: true, rollupOptions: { input: ['popup', 'viewer', 'posting', 'backup'].map(page => resolve(root, `${page}.html`)) } } });
 for (const entry of ['background', 'content']) {
   await build({ root, build: { outDir: staging, emptyOutDir: false, lib: { entry: resolve(root, `src/${entry}.ts`), name: `scoped_${entry}`, formats: ['iife'], fileName: () => `${entry}.js` } } });
 }
@@ -20,7 +20,7 @@ for (const browser of ['firefox', 'chrome']) {
   await cp(staging, directory, { recursive: true });
   const manifest = {
     manifest_version: 3,
-    name: 'Scoped: SCOPE posting explorer', version: '0.6.0',
+    name: 'Scoped: SCOPE posting explorer', version: '0.7.0',
     description: 'Collect your SCOPE search, explore postings with fast local filters, and export CSV or JSON.',
     permissions: ['activeTab', 'scripting', 'storage', 'downloads'],
     host_permissions: ['https://scope.sciencecoop.ubc.ca/*'],

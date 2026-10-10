@@ -7,7 +7,7 @@ import { loadFixture } from './helpers';
 function event() { return { addListener: vi.fn(), removeListener: vi.fn() }; }
 let data: Record<string, unknown>;
 let mock: {
-  runtime: { onMessage: ReturnType<typeof event>; onStartup: ReturnType<typeof event>; onInstalled: ReturnType<typeof event>; getURL: (path: string) => string };
+  runtime: { id: string; onMessage: ReturnType<typeof event>; onStartup: ReturnType<typeof event>; onInstalled: ReturnType<typeof event>; getURL: (path: string) => string };
   storage: { local: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> } };
   tabs: { get: ReturnType<typeof vi.fn>; sendMessage: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn>; onRemoved: ReturnType<typeof event>; onUpdated: ReturnType<typeof event> };
   scripting: { executeScript: ReturnType<typeof vi.fn> };
@@ -17,7 +17,49 @@ let mock: {
 const popupSender = { url: 'chrome-extension://scoped/popup.html' };
 const sourceSender = { tab: { id: 7, url: SOURCE_URL } };
 
-async function send(command: Command, sender: { url?: string; tab?: { id: number; url: string } } = popupSender): Promise<Reply<any>> {
+describe('backup message guards', () => {
+  it('downloads durable data without blocking storage replies while the save dialog is open', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: undefined });
+    try {
+    const rows = parsePage(document).postings;
+    data.snapshot = { schemaVersion: 1, collectedAt: '2026-10-10T00:00:00Z', sourceUrl: SOURCE_URL, reportedTotal: rows.length, postings: rows };
+    data['saved:1001'] = { version: 1, savedAt: '2026-10-10T00:00:00Z', posting: rows[0] };
+    data['run:7'] = { status: 'complete' };
+    let release!: (id: number) => void;
+    mock.downloads.download.mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    const pending = send({ type: 'downloadBackup' }, { id: 'scoped', url: 'chrome-extension://scoped/backup.html' });
+    await vi.waitFor(() => expect(mock.downloads.download).toHaveBeenCalled());
+    const options = mock.downloads.download.mock.calls[0][0];
+    const backup = JSON.parse(decodeURIComponent(options.url.split(',')[1]));
+    expect(backup.format).toBe('scoped-backup'); expect(backup.data['saved:1001']).toBeDefined();
+    expect(backup.data['run:7']).toBeUndefined(); expect(options.filename).toMatch(/^scoped-backup-.*\.json$/);
+    expect(await send({ type: 'getState', tabId: 7 })).toMatchObject({ ok: true });
+    release(42); expect(await pending).toMatchObject({ ok: true, value: 42 });
+    } finally {
+      if (descriptor) Object.defineProperty(URL, 'createObjectURL', descriptor);
+      else Reflect.deleteProperty(URL, 'createObjectURL');
+    }
+  });
+  it('rejects backup downloads/restores from SCOPE, other extension pages, and foreign extension identities', async () => {
+    for (const sender of [sourceSender, popupSender, { url: 'chrome-extension://scoped/backup.html', id: 'foreign' }]) {
+      expect(await send({ type: 'downloadBackup' }, sender)).toMatchObject({ ok: false });
+      expect(await send({ type: 'restoreBackup', text: '{}' }, sender)).toMatchObject({ ok: false });
+    }
+    expect(mock.storage.local.set).not.toHaveBeenCalled();
+  });
+  it('restores valid data from the same extension backup page and never clears on invalid input', async () => {
+    const { createBackup } = await import('../src/backup');
+    const sender = { id: 'scoped', url: 'chrome-extension://scoped/backup.html' };
+    const backup = createBackup({});
+    expect(await send({ type: 'restoreBackup', text: JSON.stringify(backup) }, sender)).toMatchObject({ ok: true });
+    const before = { ...data };
+    expect(await send({ type: 'restoreBackup', text: '{}' }, sender)).toMatchObject({ ok: false });
+    expect(data).toEqual(before);
+  });
+});
+
+async function send(command: Command, sender: { id?: string; url?: string; tab?: { id: number; url: string } } = popupSender): Promise<Reply<any>> {
   return new Promise(resolve => {
     mock.runtime.onMessage.addListener.mock.calls[0][0](command, sender, resolve);
   });
@@ -28,7 +70,7 @@ beforeEach(async () => {
   vi.resetModules();
   data = {};
   mock = {
-    runtime: { onMessage: event(), onStartup: event(), onInstalled: event(), getURL: path => 'chrome-extension://scoped/' + path },
+    runtime: { id: 'scoped', onMessage: event(), onStartup: event(), onInstalled: event(), getURL: path => 'chrome-extension://scoped/' + path },
     storage: { local: { get: vi.fn(async keys => keys === null ? { ...data } : Object.fromEntries(keys.map((key: string) => [key, data[key]]))), set: vi.fn(async items => { Object.assign(data, items); }), remove: vi.fn(async key => { delete data[key]; }) } },
     tabs: {
       get: vi.fn(async () => ({ id: 7, url: SOURCE_URL })), sendMessage: vi.fn(async (_tab, command) => ({ ok: true, value: command.type === 'collectorStatus' })),
