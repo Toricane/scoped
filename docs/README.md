@@ -5,6 +5,7 @@
 - [README](../README.md): build/install, SCOPE access, collection, viewer, troubleshooting, privacy, and limitations.
 - [Data format](data-format.md): exported fields, JSON/CSV conventions, local storage, and compatibility.
 - [Backup and distribution](distribution.md): full backup/restore, temporary testing, release archives and signed pilot installation.
+- [0.8.0 release notes](releases/0.8.0.md): changes, release files and update guidance.
 - [Acceptance status](acceptance.md): current evidence and live browser checklist.
 - [Globe and geography](geography.md): offline location matching, controls, data sources, and limits.
 - [Semantic search](semantic-search.md): local model, ranking, exact constraints, packaging, cache, and verification.

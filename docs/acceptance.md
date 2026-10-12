@@ -1,12 +1,16 @@
 # Browser acceptance and verification
 
-Current implementation: **0.7.0** with local notes, custom Applied entries and relevance marking. Last documentation review: **October 10, 2026**. This is the current checklist; [historical records](history/acceptance-history.md) preserve earlier versions and abandoned approaches.
+Current implementation: **0.8.0** with local notes, custom Applied entries, relevance marking and collapsible viewer filters. Last documentation review: **October 12, 2026**. This is the current checklist; [historical records](history/acceptance-history.md) preserve earlier versions and abandoned approaches.
 
 Automated tests, saved markup, and local previews do not establish live signed-in compatibility. User reports confirm the described workflow, not every edge case below.
 
 ## Recorded evidence
 
-Latest local-feature verification: **186 tests across 24 files pass**, TypeScript/build and both Firefox/Chrome package validations pass. The final isolated Edge library check also confirms custom-entry notes remain visible in Details after relevance marking. Live Firefox/Zen and actual Chrome feature acceptance remain pending.
+Latest release verification: **188 tests across 24 files pass** on 0.8.0; TypeScript/build and both Firefox/Chrome package validations pass. The final isolated Edge library check also confirms custom-entry notes remain visible in Details after relevance marking. Live Firefox/Zen and actual Chrome feature acceptance remain pending.
+
+**0.8.0 release preparation — October 12, 2026:** clean `npm ci`, all 188 tests, TypeScript/build, both package validations and official Mozilla lint pass; lint reports zero errors, warnings and notices. The sandboxed npm install failed and the sandboxed geometry test exceeded its timeout; installation and the full test suite passed with approved normal process/registry access. Release packaging verifies archive contents byte-for-byte and produces SHA-256 checksums. No new live-browser checks, signing or store publication were performed for this release.
+
+`npm audit` reports **six dependency findings (four moderate, two high)** in the existing Transformers dependency tree, including sharp and sprintf-js advisories. Its proposed fix upgrades Transformers from 3.8.1 to 4.3.1, a major change requiring separate runtime/model packaging verification. Dependencies remain lockfile-pinned for this release; the audit findings are unresolved. The installed extension packages the browser runtime rather than the native Node dependency tree; no broader security conclusion is inferred from this packaging distinction.
 
 The final 1,000-row Edge repeat measured **34.4 ms for 20 synchronous toggles**, retained every row node, issued no library reloads during marking, and confirmed drag/row-click marks and unmarks persisted after viewer reload. The earlier 123.3 ms run below occurred during concurrent checks; neither measurement guarantees live-browser performance.
 

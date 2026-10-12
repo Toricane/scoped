@@ -20,7 +20,7 @@ for (const browser of ['firefox', 'chrome']) {
   await cp(staging, directory, { recursive: true });
   const manifest = {
     manifest_version: 3,
-    name: 'Scoped: SCOPE posting explorer', version: '0.7.0',
+    name: 'Scoped: SCOPE posting explorer', version: '0.8.0',
     description: 'Collect your SCOPE search, explore postings with fast local filters, and export CSV or JSON.',
     permissions: ['activeTab', 'scripting', 'storage', 'downloads'],
     host_permissions: ['https://scope.sciencecoop.ubc.ca/*'],

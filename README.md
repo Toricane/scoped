@@ -4,6 +4,8 @@ Scoped is a Firefox-first, Chrome-compatible extension for collecting and explor
 
 Everything stays in your browser. Collection reads the results table and never opens individual postings or clicks Apply/Shortlist actions.
 
+Current release: **0.8.0**. See [release notes](docs/releases/0.8.0.md) for changes and update guidance.
+
 ## Build and install
 
 Requires Node.js 22.13+ and npm. The generated packages target Firefox 142+ and Chrome 120+.
